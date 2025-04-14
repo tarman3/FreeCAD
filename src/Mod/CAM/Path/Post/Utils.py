@@ -359,3 +359,61 @@ def splitArcs(path):
         machine.addCommand(command)
 
     return Path.Path(results)
+
+
+# Get X,Y,Z coordinates from G movements
+def getPosition(line):
+    coordinates = {}
+    for axis in ('x', 'y', 'z'):
+        pattern = f'{axis}-?\\d+.\\d+'
+        result = re.search(pattern, line, re.IGNORECASE)
+        value = float(result.group()[1:]) if result else positionPrev[axis]
+        coordinates[axis] = value
+    return coordinates
+
+
+# Find and comment G0 movements without changing position between mill operations (G1,G2,G3)
+def cleanerG0(gcode, deltaXY=0.01):
+    global positionPrev
+    positionPrev = {'x':None, 'y':None, 'z':None}
+    positionNext = {'x':None, 'y':None, 'z':None}
+    G123Prev = {'x':None, 'y':None, 'z':None}
+    G123Next = {'x':None, 'y':None, 'z':None}
+    tempG0LinesNum = []
+    lines2comment = []
+    lineNum = 0
+    lines = list(gcode.splitlines())
+
+    for line in lines:
+        if re.search(r'^G0\s?[XYZ]\d+', line, re.IGNORECASE):
+            tempG0LinesNum.append(lineNum)
+
+        if re.search(r'^G[0123]\s?[XYZ]\d+', line, re.IGNORECASE):
+            positionNext = getPosition(line)
+
+        if re.search(r'^G[123]\s?[XYZ]\d+', line, re.IGNORECASE):
+            G123Next = getPosition(line)
+
+        if re.search(r'^G[123]\s?[XYZ]\d+', line, re.IGNORECASE):
+            if  positionNext['x'] is not None \
+            and positionNext['y'] is not None \
+            and G123Prev['x'] is not None \
+            and G123Prev['y'] is not None \
+            and tempG0LinesNum \
+            and ((positionNext['x']-G123Prev['x'])**2 + (positionNext['y']-G123Prev['y'])**2)**0.5 <= deltaXY:
+                lines2comment.extend(tempG0LinesNum)
+
+            tempG0LinesNum.clear()
+
+        G123Prev = G123Next
+        positionPrev = positionNext
+        lineNum += 1
+
+    for i in lines2comment:
+        lines[i] = f';{lines[i]} ; Useless movement'
+
+    if lines2comment:
+        text = f'(Amount lines commented by cleanerG0: {len(lines2comment)})'
+        lines.insert(2, text)
+
+    return '\n'.join(lines)

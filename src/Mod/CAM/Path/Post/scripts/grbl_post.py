@@ -152,6 +152,11 @@ parser.add_argument(
 parser.add_argument(
     "--no-bcnc", action="store_true", help="suppress bCNC block header output (default)"
 )
+parser.add_argument(
+    "--cleanG0",
+    help="set max distance between mill operations (G1,G2,G3) to comment G0 movements",
+)
+
 TOOLTIP_ARGS = parser.format_help()
 
 
@@ -194,6 +199,7 @@ def processArguments(argstring):
     global SPINDLE_WAIT
     global RETURN_TO
     global OUTPUT_BCNC
+    global CLEANG0
 
     try:
         args = parser.parse_args(shlex.split(argstring))
@@ -240,6 +246,8 @@ def processArguments(argstring):
             OUTPUT_BCNC = True
         if args.no_bcnc:
             OUTPUT_BCNC = False
+        if args.cleanG0:
+            CLEANG0 = float(args.cleanG0)
 
     except Exception as e:
         return False
@@ -372,6 +380,10 @@ def export(objectslist, filename, argstring):
         gcode += linenumber() + "(Begin postamble)\n"
     for line in POSTAMBLE.splitlines(True):
         gcode += linenumber() + line
+
+    # comment useless G0 movements
+    if CLEANG0:
+        gcode = PostUtils.cleanerG0(gcode, CLEANG0)
 
     # show the gCode result dialog
     if FreeCAD.GuiUp and SHOW_EDITOR:

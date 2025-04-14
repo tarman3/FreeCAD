@@ -76,6 +76,10 @@ parser.add_argument(
     action="store_true",
     help="suppress tool length offset (G43) following tool changes",
 )
+parser.add_argument(
+    "--cleanG0",
+    help="set max distance between mill operations (G1,G2,G3) to comment G0 movements",
+)
 
 TOOLTIP_ARGS = parser.format_help()
 
@@ -89,6 +93,7 @@ USE_TLO = True  # if true G43 will be output following tool changes
 OUTPUT_DOUBLES = True  # if false duplicate axis values are suppressed if the same as previous line.
 COMMAND_SPACE = " "
 LINENR = 100  # line number starting value
+CLEANG0 = None
 
 # These globals will be reflected in the Machine configuration of the project
 UNITS = "G21"  # G21 for metric, G20 for us standard
@@ -134,6 +139,7 @@ def processArguments(argstring):
     global MODAL
     global USE_TLO
     global OUTPUT_DOUBLES
+    global CLEANG0
 
     try:
         args = parser.parse_args(shlex.split(argstring))
@@ -163,6 +169,8 @@ def processArguments(argstring):
         if args.axis_modal:
             print("here")
             OUTPUT_DOUBLES = False
+        if args.cleanG0:
+            CLEANG0 = float(args.cleanG0)
 
     except Exception:
         return False
@@ -257,6 +265,10 @@ def export(objectslist, filename, argstring):
         gcode += "(begin postamble)\n"
     for line in POSTAMBLE.splitlines(True):
         gcode += linenumber() + line
+
+    # comment useless G0 movements
+    if CLEANG0:
+        gcode = PostUtils.cleanerG0(gcode, CLEANG0)
 
     if FreeCAD.GuiUp and SHOW_EDITOR:
         dia = PostUtils.GCodeEditorDialog()
