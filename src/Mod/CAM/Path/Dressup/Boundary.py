@@ -73,6 +73,16 @@ class DressupPathBoundary(object):
             ),
         )
         obj.Inside = True
+        obj.addProperty(
+            "App::PropertyBool",
+            "KeepToolDown",
+            "Boundary",
+            QT_TRANSLATE_NOOP(
+                "App::Property",
+                "Keep tool down.",
+            ),
+        )
+        obj.KeepToolDown = False
 
         self.obj = obj
         self.safeHeight = None
@@ -101,7 +111,7 @@ class DressupPathBoundary(object):
         return True
 
     def execute(self, obj):
-        pb = PathBoundary(obj.Base, obj.Stock.Shape, obj.Inside)
+        pb = PathBoundary(obj.Base, obj.Stock.Shape, obj.Inside, obj.KeepToolDown)
         obj.Path = pb.execute()
 
 
@@ -115,7 +125,7 @@ class PathBoundary:
     the provided boundary shape.
     """
 
-    def __init__(self, baseOp, boundaryShape, inside=True):
+    def __init__(self, baseOp, boundaryShape, inside=True, keepToolDown=False):
         self.baseOp = baseOp
         self.boundary = boundaryShape
         self.inside = inside
@@ -123,6 +133,7 @@ class PathBoundary:
         self.clearanceHeight = None
         self.strG0ZsafeHeight = None
         self.strG0ZclearanceHeight = None
+        self.keepToolDown = keepToolDown
 
     def boundaryCommands(self, begin, end, verticalFeed):
         Path.Log.track(_vstr(begin), _vstr(end))
@@ -169,14 +180,19 @@ class PathBoundary:
         bogusY = True
         commands = [cmd]
         lastExit = None
+        isStartMovements = True
         for cmd in path.Commands[1:]:
             if cmd.Name in Path.Geom.CmdMoveAll:
+                if cmd.Name == 'G1':  # Detect start movements
+                    isStartMovements = False
                 if bogusX:
                     bogusX = "X" not in cmd.Parameters
                 if bogusY:
                     bogusY = "Y" not in cmd.Parameters
                 edge = Path.Geom.edgeForCmd(cmd, pos)
-                if edge:
+                if isStartMovements:  # Add start movements without processing
+                    commands.append(cmd)
+                elif edge:
                     inside = edge.common(self.boundary).Edges
                     outside = edge.cut(self.boundary).Edges
                     if not self.inside:  # UI "inside boundary" param
@@ -218,7 +234,7 @@ class PathBoundary:
                                 # inside edges are taken at this point (see swap of inside/outside
                                 # above - so we can just connect the dots ...
                                 if lastExit:
-                                    if not (bogusX or bogusY):
+                                    if not self.keepToolDown and not (bogusX or bogusY):
                                         commands.extend(
                                             self.boundaryCommands(lastExit, pos, tc.VertFeed.Value)
                                         )
