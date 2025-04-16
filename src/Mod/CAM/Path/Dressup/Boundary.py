@@ -234,7 +234,9 @@ class PathBoundary:
                                         if isStartMovements or not self.keepToolDown:
                                             isStartMovements = False
                                             commands.extend(
-                                                self.boundaryCommands(lastExit, pos, tc.VertFeed.Value)
+                                                self.boundaryCommands(
+                                                    lastExit, pos, tc.VertFeed.Value
+                                                )
                                             )
                                     lastExit = None
                                 Path.Log.track(e, flip)
