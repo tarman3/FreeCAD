@@ -183,16 +183,12 @@ class PathBoundary:
         isStartMovements = True
         for cmd in path.Commands[1:]:
             if cmd.Name in Path.Geom.CmdMoveAll:
-                if cmd.Name == 'G1':  # Detect start movements
-                    isStartMovements = False
                 if bogusX:
                     bogusX = "X" not in cmd.Parameters
                 if bogusY:
                     bogusY = "Y" not in cmd.Parameters
                 edge = Path.Geom.edgeForCmd(cmd, pos)
-                if isStartMovements:  # Add start movements without processing
-                    commands.append(cmd)
-                elif edge:
+                if edge:
                     inside = edge.common(self.boundary).Edges
                     outside = edge.cut(self.boundary).Edges
                     if not self.inside:  # UI "inside boundary" param
@@ -234,10 +230,12 @@ class PathBoundary:
                                 # inside edges are taken at this point (see swap of inside/outside
                                 # above - so we can just connect the dots ...
                                 if lastExit:
-                                    if not self.keepToolDown and not (bogusX or bogusY):
-                                        commands.extend(
-                                            self.boundaryCommands(lastExit, pos, tc.VertFeed.Value)
-                                        )
+                                    if not (bogusX or bogusY):
+                                        if isStartMovements or not self.keepToolDown:
+                                            isStartMovements = False
+                                            commands.extend(
+                                                self.boundaryCommands(lastExit, pos, tc.VertFeed.Value)
+                                            )
                                     lastExit = None
                                 Path.Log.track(e, flip)
                                 if not (
