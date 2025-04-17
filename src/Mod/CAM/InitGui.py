@@ -102,6 +102,7 @@ class CAMWorkbench(Workbench):
             "CAM_SimulatorGL",
             "CAM_SelectLoop",
             "CAM_OpActiveToggle",
+            "CAM_SetStartPoint",
         ]
         prepcmdlist = [
             "CAM_Fixture",
