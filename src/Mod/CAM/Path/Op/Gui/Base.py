@@ -1311,8 +1311,8 @@ class CommandSetStartPoint:
         obj.StartPoint.y = point.y
         obj.StartPoint.z = obj.ClearanceHeight.Value
         obj.UseStartPoint = True
-        textPoint = f'{obj.StartPoint.x:.2f}, {obj.StartPoint.y:.2f}, {obj.StartPoint.z:.2f}'
-        print(f'Set start point for operation {obj.Label} >>> {textPoint}')
+        textPoint = f"{obj.StartPoint.x:.2f}, {obj.StartPoint.y:.2f}, {obj.StartPoint.z:.2f}"
+        print(f"Set start point for operation {obj.Label} >>> {textPoint}")
 
     def Activated(self):
         self.obj = FreeCADGui.Selection.getSelection()[0]
