@@ -1306,6 +1306,7 @@ class CommandSetStartPoint:
         return obj and hasattr(obj, "StartPoint")
 
     def setpoint(self, point, o):
+        FreeCADGui.Snapper.grid.off()
         obj = self.obj
         obj.StartPoint.x = point.x
         obj.StartPoint.y = point.y
