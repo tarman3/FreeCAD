@@ -507,6 +507,10 @@ void MillSimulation::HandleGuiAction(eGuiItems actionItem, bool checked)
             guiDisplay.UpdateSimSpeed(mSimSpeed);
             break;
 
+        case eGuiItemHome:
+            simDisplay.UpdateEyeFactor(0.1f);
+            simDisplay.MoveEyeCenter();
+
         default:
             break;
     }

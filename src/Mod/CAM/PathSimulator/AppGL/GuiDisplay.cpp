@@ -43,6 +43,7 @@ GuiItem guiItems[] = {
     {eGuiItemAmbientOclusion, 0, 0, -60, -100, 'A', false, GUIITEM_CHECKABLE},
     {eGuiItemView, 0, 0, -180, -100, 'V', false},
     {eGuiItemSlower, 0, 0, 120, -100, ' '},
+    {eGuiItemHome, 0, 0, -60, -150, ' '},
 };
 
 #define NUM_GUI_ITEMS (sizeof(guiItems) / sizeof(GuiItem))
@@ -62,7 +63,8 @@ std::vector<std::string> guiFileNames = {"Slider.png",
                                          "Path.png",
                                          "AmbientOclusion.png",
                                          "View.png",
-                                         "Slower.png"};
+                                         "Slower.png",
+                                         "Home.png"};
 
 void GuiDisplay::UpdateProjection()
 {

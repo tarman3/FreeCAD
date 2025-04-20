@@ -49,7 +49,8 @@ enum eGuiItems
     eGuiItemAmbientOclusion,
     eGuiItemView,
     eGuiItemMax,
-    eGuiItemSlower
+    eGuiItemSlower,
+    eGuiItemHome
 };
 
 struct GuiItem

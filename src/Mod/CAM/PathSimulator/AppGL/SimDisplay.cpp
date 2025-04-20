@@ -523,6 +523,13 @@ void SimDisplay::MoveEye(float x, float z)
     updateDisplay = true;
 }
 
+void SimDisplay::MoveEyeCenter()
+{
+    mEyeX = 0;
+    mEyeZ = 0;
+    updateDisplay = true;
+}
+
 void SimDisplay::UpdateEyeFactor(float factor)
 {
     if (mEyeDistFactor == factor) {
