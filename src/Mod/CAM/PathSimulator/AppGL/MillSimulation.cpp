@@ -472,7 +472,7 @@ void MillSimulation::HandleGuiAction(eGuiItems actionItem, bool checked)
                 mSimSpeed = 40;
             }
             else {
-                mSimSpeed = 1;
+                mSimSpeed = 40;
             }
             guiDisplay.UpdateSimSpeed(mSimSpeed);
             break;
@@ -492,6 +492,19 @@ void MillSimulation::HandleGuiAction(eGuiItems actionItem, bool checked)
                 mViewItems = VIEWITEM_SIMULATION;
             }
             simDisplay.updateDisplay = true;
+            break;
+
+        case eGuiItemSlower:
+            if (mSimSpeed == 40) {
+                mSimSpeed = 10;
+            }
+            else if (mSimSpeed == 10) {
+                mSimSpeed = 1;
+            }
+            else {
+                mSimSpeed = 1;
+            }
+            guiDisplay.UpdateSimSpeed(mSimSpeed);
             break;
 
         default:
