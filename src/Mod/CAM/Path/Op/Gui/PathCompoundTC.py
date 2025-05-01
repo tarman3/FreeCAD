@@ -47,14 +47,14 @@ translate = FreeCAD.Qt.translate
 
 
 # Add base set of operation properties
-def _addBaseProperties(obj):
-    obj.addProperty(
+def _addBaseProperties(compObj):
+    compObj.addProperty(
         "App::PropertyString",
         "Comment",
         "Path",
         QT_TRANSLATE_NOOP("App::Property", "An optional comment for this Operation"),
     )
-    obj.addProperty(
+    compObj.addProperty(
         "App::PropertyString",
         "UserLabel",
         "Path",
@@ -63,8 +63,8 @@ def _addBaseProperties(obj):
 
 
 # Add ToolController required properties
-def _addToolController(obj):
-    obj.addProperty(
+def _addToolController(compObj, groupObjs):
+    compObj.addProperty(
         "App::PropertyLink",
         "ToolController",
         "Path",
@@ -74,8 +74,12 @@ def _addToolController(obj):
         ),
     )
 
-    obj.ToolController = PathUtils.findToolController(obj, None)
-    if not obj.ToolController:
+    tcs = [groupObj.ToolController for groupObj in groupObjs]
+    if tcs != [None] and len(set(tcs)) == 1:
+        compObj.ToolController = tcs[0]
+    else:
+        compObj.ToolController = PathUtils.findToolController(compObj, None)
+    if not compObj.ToolController:
         raise OpBase.PathNoTCException()
 
 
@@ -114,13 +118,13 @@ class commandPathCompoundTC:
         compoundObj = doc.addObject("Path::FeatureCompound", "PathCompound")
 
         selection = FreeCADGui.Selection.getSelection()
-        if selection:
-            compoundObj.Group = selection
+        groupObjs = [obj for obj in selection if isinstance(obj.Proxy, Path.Op.Base.ObjectOp)]
+        compoundObj.Group = groupObjs
 
         PathUtils.getToolControllers = _getToolControllers
         PathUtils.addToJob(compoundObj)
         _addBaseProperties(compoundObj)
-        _addToolController(compoundObj)
+        _addToolController(compoundObj, groupObjs)
         doc.recompute()
 
 
