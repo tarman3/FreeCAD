@@ -31,7 +31,7 @@
 #include "SimDisplay.h"
 #include "linmath.h"
 #include "OpenGlWrapper.h"
-
+#include <cmath>
 
 namespace MillSim
 {
@@ -506,20 +506,28 @@ void SimDisplay::RotateEye(float rotStep)
 
 void SimDisplay::MoveEye(float x, float z)
 {
+    const float arg1 = 124.938;
+    const float arg2 = 578.754;
+    const float arg3 = -20.7993;
+    float maxValue = arg1+arg2*exp(arg3*mEyeDistFactor);
+
     mEyeX += x;
-    if (mEyeX > 300) {
-        mEyeX = 300;
+
+    if (mEyeX > maxValue) {
+        mEyeX = maxValue;
     }
-    else if (mEyeX < -300) {
-        mEyeX = -300;
+    else if (mEyeX < -maxValue) {
+        mEyeX = -maxValue;
     }
     mEyeZ += z;
-    if (mEyeZ > 300) {
-        mEyeZ = 300;
+
+    if (mEyeZ > maxValue*0.4) {
+        mEyeZ = maxValue*0.4;
     }
-    else if (mEyeZ < -300) {
-        mEyeZ = -300;
+    else if (mEyeZ < -maxValue*0.4) {
+        mEyeZ = -maxValue*0.4;
     }
+    qDebug("mEyeDistFactor=%f mEyeX=%f mEyeZ=%f maxValue=%f", mEyeDistFactor, mEyeX, mEyeZ, maxValue);
     updateDisplay = true;
 }
 
