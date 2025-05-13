@@ -3805,7 +3805,9 @@ static inline void addParameter(bool verbose,
                                 bool relative = false)
 {
     double d = next - last;
+    qDebug("3 addParameter   d = next - last = %f", d);
     if (verbose || fabs(d) > Precision::Confusion()) {
+        qDebug("    fabs(d) > Precision::Confusion()");
         cmd.Parameters[name] = relative ? d : next;
     }
 }
@@ -3815,6 +3817,10 @@ addGCode(bool verbose, Toolpath& path, const gp_Pnt& last, const gp_Pnt& next, c
 {
     Command cmd;
     cmd.Name = name;
+    qDebug("2 addGCode %s", name);
+    qDebug("    last %f %f %f", last.X(), last.Y(), last.Z());
+    qDebug("    next %f %f %f", next.X(), next.Y(), next.Z());
+
     addParameter(verbose, cmd, "X", last.X(), next.X());
     addParameter(verbose, cmd, "Y", last.Y(), next.Y());
     addParameter(verbose, cmd, "Z", last.Z(), next.Z());
@@ -3925,6 +3931,7 @@ void Area::toPath(Toolpath& path,
     gp_Pnt pstart;
     if (_pstart) {
         pstart = *_pstart;
+        qDebug("    pstart = *_pstart %f %f %f", pstart.X(), pstart.Y(), pstart.Z());
     }
 
     double stepdown_hint = 1.0;
@@ -3991,19 +3998,30 @@ void Area::toPath(Toolpath& path,
     gp_Pnt plast, p;
     // initial vertical rapid pull up to retraction (or start Z height if higher)
     (p.*setter)(std::max(retraction, (pstart.*getter)()));
-    addGCode(false, path, plast, p, "G0");
+    addGCode(false, path, plast, p, "G00");
     plast = p;
     p = pstart;
+    qDebug("1a Area::toPath");
+    qDebug("    plast=p %f %f %f", plast.X(), plast.Y(), plast.Z());
+    qDebug("    p=pstart %f %f %f", p.X(), p.Y(), p.Z());
 
     // rapid horizontal move to start point
     gp_Pnt tmpPlast = plast;
     (tmpPlast.*setter)((p.*getter)());
     if (_pstart && p.IsEqual(tmpPlast, Precision::Confusion())) {
-        plast.SetCoord(10.0, 10.0, 10.0);
+        qDebug("    _pstart %d    p.IsEqual(tmpPlast) %d",
+               (bool)_pstart,
+               p.IsEqual(tmpPlast, Precision::Confusion()));
+        plast.SetCoord(44.4, 55.55, 66.66);
+        // plast.SetCoord(0.0, 0.0, 0.0);
         (plast.*setter)(retraction);
     }
     (p.*setter)(retraction);
-    addGCode(false, path, plast, p, "G0");
+
+    qDebug("1b Area::toPath");
+    qDebug("    plast %f %f %f", plast.X(), plast.Y(), plast.Z());
+    qDebug("    p %f %f %f", p.X(), p.Y(), p.Z());
+    addGCode(false, path, plast, p, "G01");
 
 
     plast = p;
