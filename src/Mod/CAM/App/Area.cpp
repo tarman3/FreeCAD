@@ -3929,12 +3929,13 @@ void Area::toPath(Toolpath& path,
     std::list<TopoDS_Shape> wires;
 
     gp_Pnt pstart;
+    qDebug(">>>> Area <<<<<");
     if (_pstart) {
         pstart = *_pstart;
         qDebug("    StartPoint = true    pstart(%f, %f, %f)", pstart.X(), pstart.Y(), pstart.Z());
     }
     else {
-        qDebug("    StartPoint = false");
+        qDebug("    _pstart=nullptr   StartPoint = false");
     }
 
     double stepdown_hint = 1.0;
@@ -4001,7 +4002,7 @@ void Area::toPath(Toolpath& path,
     gp_Pnt plast, p;
     // initial vertical rapid pull up to retraction (or start Z height if higher)
     (p.*setter)(std::max(retraction, (pstart.*getter)()));
-    addGCode(false, path, plast, p, "G00");
+    addGCode(false, path, plast, p, "G0");
     plast = p;
     p = pstart;
     // qDebug("1a Area::toPath");
@@ -4011,10 +4012,11 @@ void Area::toPath(Toolpath& path,
     // rapid horizontal move to start point
     gp_Pnt tmpPlast = plast;
     (tmpPlast.*setter)((p.*getter)());
+    // qDebug(">>>> Area <<<<");
+    qDebug("    _pstart %d    p.IsEqual(tmpPlast) %d",
+           (bool)_pstart,
+           p.IsEqual(tmpPlast, Precision::Confusion()));
     if (_pstart && p.IsEqual(tmpPlast, Precision::Confusion())) {
-        // qDebug("    _pstart %d    p.IsEqual(tmpPlast) %d",
-        //        (bool)_pstart,
-        //        p.IsEqual(tmpPlast, Precision::Confusion()));
         plast.SetCoord(44.4, 55.55, 66.66);
         // plast.SetCoord(0.0, 0.0, 0.0);
         (plast.*setter)(retraction);
@@ -4024,7 +4026,7 @@ void Area::toPath(Toolpath& path,
     // qDebug("1b Area::toPath");
     // qDebug("    plast %f %f %f", plast.X(), plast.Y(), plast.Z());
     // qDebug("    p %f %f %f", p.X(), p.Y(), p.Z());
-    addGCode(false, path, plast, p, "G01");
+    addGCode(false, path, plast, p, "G00");
 
 
     plast = p;

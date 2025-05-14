@@ -75,7 +75,7 @@ App::DocumentObjectExecReturn* FeatureShape::execute()
         }
         shapes.push_back(shape);
     }
-
+    qDebug(">>>> FeaturePathShape    Area::toPath <<<<<");
     Area::toPath(path,
                  shapes,
                  UseStartPoint.getValue() ? &pstart : nullptr,

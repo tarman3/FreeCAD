@@ -370,6 +370,9 @@ private:
             "return_end",
             PARAM_FIELD_STRINGS(ARG, AREA_PARAMS_PATH),
             nullptr};
+        qDebug(" ");
+        qDebug(">>>> AppPathPy    Path::Area::toPath <<<<<");
+        qDebug("    before Wrapped: start = %d", (bool)start);
         if (!Base::Wrapped_ParseTupleAndKeywords(args.ptr(),
                                                  kwds.ptr(),
                                                  "O|O!O!" PARAM_PY_KWDS(AREA_PARAMS_PATH),
@@ -382,6 +385,7 @@ private:
                                                  PARAM_REF(PARAM_FARG, AREA_PARAMS_PATH))) {
             throw Py::Exception();
         }
+        qDebug("    after  Wrapped: start = %d", (bool)start);
 
         std::list<TopoDS_Shape> shapes;
         if (PyObject_TypeCheck(pShapes, &(Part::TopoShapePy::Type))) {
@@ -411,6 +415,11 @@ private:
         try {
             gp_Pnt pend;
             std::unique_ptr<Path::Toolpath> path(new Path::Toolpath);
+            qDebug("    start %d   pstart (%f, %f, %f)",
+                   (bool)start,
+                   pstart.X(),
+                   pstart.Y(),
+                   pstart.Z());
             Path::Area::toPath(*path,
                                shapes,
                                start ? &pstart : nullptr,
