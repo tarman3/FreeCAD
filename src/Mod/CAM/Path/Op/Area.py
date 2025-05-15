@@ -291,6 +291,7 @@ class ObjectOp(PathOp.ObjectOp):
 
         if self.endVector is not None:
             # pathParams["start"] = self.endVector
+            print("    endvector = ", self.endVector)
             pass
         elif PathOp.FeatureStartPoint & self.opFeatures(obj) and obj.UseStartPoint:
             pathParams["start"] = obj.StartPoint
