@@ -291,6 +291,7 @@ class ObjectOp(PathOp.ObjectOp):
 
         if self.endVector is not None:
             # pathParams["start"] = self.endVector
+            print("    endvector was removed here")
             print("    endvector = ", self.endVector)
             pass
         elif PathOp.FeatureStartPoint & self.opFeatures(obj) and obj.UseStartPoint:
@@ -300,6 +301,26 @@ class ObjectOp(PathOp.ObjectOp):
         Path.Log.debug("Path with params: {}".format(obj.PathParams))
 
         (pp, end_vector) = Path.fromShapes(**pathParams)
+
+        # The execution of the function above, that itself triggers C++ code execution, creates
+        # all the raw G-code commands, based on parameter criteria and selected shapes (**pathParams)
+
+        # Now you can modify pp.Commands - CAUTION: you need to do conditional modifications to avoid crashes, wrong moves etc.
+        # For example, you could search for empty "Command G0 []" moves or, if specific conditions are met, for unnecessary [ X:0 Y:0 ] moves
+        print("\n----- Command dictionary before command modification -----")
+        print(pp.Commands)
+        cmds = list(pp.Commands)
+        for i, cmd in enumerate(cmds):
+            # print(f"{i}: {cmd}")
+            if "[ ]" in str(cmd):
+                cmds.pop(i)
+            if "[ X:0 Y:0 ]" in str(cmd):
+                cmds.pop(i)
+        pp.Commands = []
+        pp.Commands = cmds
+        print("\n----- Command dictionary after command modification -----")
+        print(pp.Commands)
+
         Path.Log.debug("pp: {}, end vector: {}".format(pp, end_vector))
 
         # Keep track of this segment's end only if it has movement (otherwise end_vector is 0,0,0 and the next segment will unnecessarily start there)
