@@ -256,8 +256,13 @@ class commandPathCompoundTC:
 
         compoundObj = doc.addObject("Path::FeatureCompoundPython", "PathCompound")
         ObjectCompound(compoundObj)
+
         selection = FreeCADGui.Selection.getSelection()
-        groupObjs = [obj for obj in selection if isinstance(obj.Proxy, Path.Op.Base.ObjectOp)]
+        groupObjs = []
+        for sel in selection:
+            if isinstance(sel.Proxy, Path.Op.Base.ObjectOp):
+                sel.ViewObject.Visibility = False
+                groupObjs.append(sel)
 
         # Get 'Operations' group object before add Paths to Compound
         operationsGroup = groupObjs[0].InList[0]
