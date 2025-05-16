@@ -29,8 +29,12 @@ import Part
 import Path
 import Path.Op.Base as OpBase
 import PathScripts.PathUtils as PathUtils
+from Path.Dressup.Utils import toolController
 
 from PySide.QtCore import QT_TRANSLATE_NOOP
+
+import math
+import time
 
 __title__ = "CAM Path Compound with Tool Controller"
 __author__ = ""
@@ -48,60 +52,184 @@ else:
 translate = FreeCAD.Qt.translate
 
 
-# Add base set of operation properties
-def _addBaseProperties(compObj):
-    compObj.addProperty(
-        "App::PropertyBool",
-        "Active",
-        "Path",
-        QT_TRANSLATE_NOOP("App::Property", "Make False, to prevent operation from generating code"),
-    )
-    compObj.addProperty(
-        "App::PropertyString",
-        "Comment",
-        "Path",
-        QT_TRANSLATE_NOOP("App::Property", "An optional comment for this Operation"),
-    )
-    compObj.addProperty(
-        "App::PropertyString",
-        "UserLabel",
-        "Path",
-        QT_TRANSLATE_NOOP("App::Property", "User Assigned Label"),
-    )
-    compObj.Active = True
+class ObjectCompound:
+    def __init__(self, obj):
+        # obj.addProperty(
+        #     "App::PropertyLinkList",
+        #     "Group",
+        #     "Path",
+        #     QT_TRANSLATE_NOOP("App::Property", "The toolpath(s) to compound"),
+        # )
+        obj.addProperty(
+            "App::PropertyBool",
+            "Active",
+            "Path",
+            QT_TRANSLATE_NOOP(
+                "App::Property", "Make False, to prevent operation from generating code"
+            ),
+        )
+        obj.addProperty(
+            "App::PropertyString",
+            "Comment",
+            "Path",
+            QT_TRANSLATE_NOOP("App::Property", "An optional comment for this Operation"),
+        )
+        obj.addProperty(
+            "App::PropertyString",
+            "UserLabel",
+            "Path",
+            QT_TRANSLATE_NOOP("App::Property", "User Assigned Label"),
+        )
+        obj.addProperty(
+            "App::PropertyLink",
+            "ToolController",
+            "Path",
+            QT_TRANSLATE_NOOP(
+                "App::Property",
+                "The tool controller that will be used to calculate the path",
+            ),
+        )
+        obj.addProperty(
+            "App::PropertyString",
+            "CycleTime",
+            "Path",
+            QT_TRANSLATE_NOOP("App::Property", "Operations Cycle Time Estimation"),
+        )
+        obj.Active = True
+        obj.Proxy = self
+        obj.setEditorMode("CycleTime", 1)  # read-only
+
+    def dumps(self):
+        return None
+
+    def loads(self, state):
+        return None
+
+    def onChanged(self, obj, prop):
+        pass
+
+    def onDocumentRestored(self, obj):
+        """onDocumentRestored(obj) ... Called automatically when document is restored."""
+
+        if not hasattr(obj, "Active"):
+            obj.addProperty(
+                "App::PropertyBool",
+                "Active",
+                "Path",
+                QT_TRANSLATE_NOOP(
+                    "PathOp", "Make False, to prevent operation from generating code"
+                ),
+            )
+            obj.Active = True
+
+    def execute(self, obj):
+        if isinstance(obj.Group, list):
+            group = obj.Group
+
+        if len(group) == 0:
+            return
+
+        obj.ToolController = toolController(group[0])
+
+        # Do not generate paths and clear current Path data if operation not
+        if not obj.Active:
+            if obj.Path:
+                obj.Path = Path.Path()
+            return
+
+        obj.Path = Compound(obj.Group).getPath()
+        obj.CycleTime = self.getCycleTimeEstimate(obj)
+        # self.job.Proxy.getCycleTime()
+
+    def getCycleTimeEstimate(self, obj):
+
+        tc = obj.ToolController
+
+        if tc is None or tc.ToolNumber == 0:
+            Path.Log.error(translate("CAM", "No Tool Controller selected."))
+            return translate("CAM", "Tool Error")
+
+        hFeedrate = tc.HorizFeed.Value
+        vFeedrate = tc.VertFeed.Value
+        hRapidrate = tc.HorizRapid.Value
+        vRapidrate = tc.VertRapid.Value
+
+        if (hFeedrate == 0 or vFeedrate == 0) and not Path.Preferences.suppressAllSpeedsWarning():
+            Path.Log.warning(
+                translate(
+                    "CAM",
+                    "Tool Controller feedrates required to calculate the cycle time.",
+                )
+            )
+            return translate("CAM", "Feedrate Error")
+
+        if (
+            hRapidrate == 0 or vRapidrate == 0
+        ) and not Path.Preferences.suppressRapidSpeedsWarning():
+            Path.Log.warning(
+                translate(
+                    "CAM",
+                    "Add Tool Controller Rapid Speeds on the SetupSheet for more accurate cycle times.",
+                )
+            )
+
+        # Get the cycle time in seconds
+        seconds = obj.Path.getCycleTime(hFeedrate, vFeedrate, hRapidrate, vRapidrate)
+
+        if not seconds or math.isnan(seconds):
+            return translate("CAM", "Cycletime Error")
+
+        # Convert the cycle time to a HH:MM:SS format
+        cycleTime = time.strftime("%H:%M:%S", time.gmtime(seconds))
+
+        return cycleTime
 
 
-# Add ToolController required properties
-def _addToolController(compObj, groupObjs):
-    compObj.addProperty(
-        "App::PropertyLink",
-        "ToolController",
-        "Path",
-        QT_TRANSLATE_NOOP(
-            "App::Property",
-            "The tool controller that will be used to calculate the path",
-        ),
-    )
+class Compound:
+    def __init__(self, GroupList):
+        self.GroupList = list()
 
-    tcs = [groupObj.ToolController for groupObj in groupObjs]
-    if tcs != [None] and len(set(tcs)) == 1:
-        compObj.ToolController = tcs[0]
-    else:
-        compObj.ToolController = PathUtils.findToolController(compObj, None)
-    if not compObj.ToolController:
-        raise OpBase.PathNoTCException()
+        if GroupList:
+            if isinstance(GroupList, list):
+                self.GroupList = GroupList
+            else:
+                self.GroupList = [GroupList]
+
+    # Public method
+    def getPath(self):
+        """getPath() ... Call this method on an instance of the class to generate and return
+        path data for the requested path array."""
+
+        output = ""
+        base = self.GroupList
+        for b in base:
+            np = Path.Path(b.Path.Commands)
+            output += np.toGCode()
+
+        # return output
+        return Path.Path(output)
 
 
-# Get list of tool controllers
-def _getToolControllers(obj, proxy=None):
-    try:
-        job = PathUtils.findParentJob(obj)
-    except Exception:
-        job = None
+class ViewProviderArray:
+    def __init__(self, vobj):
+        self.Object = vobj.Object
+        vobj.Proxy = self
 
-    if job:
-        return [tc for tc in job.Tools.Group]
-    else:
+    def attach(self, vobj):
+        self.Object = vobj.Object
+        return
+
+    def dumps(self):
+        return None
+
+    def loads(self, state):
+        return None
+
+    def claimChildren(self):
+        if hasattr(self, "Object"):
+            if hasattr(self.Object, "Base"):
+                if self.Object.Base:
+                    return self.Object.Base
         return []
 
 
@@ -116,24 +244,28 @@ class commandPathCompoundTC:
         }
 
     def IsActive(self):
-        if FreeCAD.ActiveDocument is not None:
-            for o in FreeCAD.ActiveDocument.Objects:
-                if o.Name[:3] == "Job":
-                    return True
-        return False
+        selections = [
+            sel.isDerivedFrom("Path::Feature") for sel in FreeCADGui.Selection.getSelection()
+        ]
+        return selections and all(selections)
 
     def Activated(self):
         doc = FreeCAD.ActiveDocument
-        compoundObj = doc.addObject("Path::FeatureCompound", "PathCompound")
 
+        FreeCAD.ActiveDocument.openTransaction("Create Array")
+
+        compoundObj = doc.addObject("Path::FeatureCompoundPython", "PathCompound")
+        ObjectCompound(compoundObj)
         selection = FreeCADGui.Selection.getSelection()
         groupObjs = [obj for obj in selection if isinstance(obj.Proxy, Path.Op.Base.ObjectOp)]
         compoundObj.Group = groupObjs
-
-        PathUtils.getToolControllers = _getToolControllers
         PathUtils.addToJob(compoundObj)
-        _addBaseProperties(compoundObj)
-        _addToolController(compoundObj, groupObjs)
+        compoundObj.ViewObject.Proxy = 0
+
+        # PathUtils.getToolControllers = _getToolControllers
+        # _addBaseProperties(compoundObj)
+        # _addToolController(compoundObj, groupObjs)
+        FreeCAD.ActiveDocument.commitTransaction()
         doc.recompute()
 
 
