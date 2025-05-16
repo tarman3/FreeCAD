@@ -258,8 +258,16 @@ class commandPathCompoundTC:
         ObjectCompound(compoundObj)
         selection = FreeCADGui.Selection.getSelection()
         groupObjs = [obj for obj in selection if isinstance(obj.Proxy, Path.Op.Base.ObjectOp)]
+
+        # Get 'Operations' group object before add Paths to Compound
+        operationsGroup = groupObjs[0].InList[0]
+
         compoundObj.Group = groupObjs
         PathUtils.addToJob(compoundObj)
+
+        # Remove Path objects from 'Operations' group to exclude gcode duplication
+        operationsGroup.removeObjects(groupObjs)
+
         compoundObj.ViewObject.Proxy = 0
 
         # PathUtils.getToolControllers = _getToolControllers
