@@ -22,12 +22,9 @@
 # *                                                                         *
 # ***************************************************************************
 
-import Draft
 import FreeCAD
 import FreeCADGui
-import Part
 import Path
-import Path.Op.Base as OpBase
 import PathScripts.PathUtils as PathUtils
 from Path.Dressup.Utils import toolController
 
@@ -38,7 +35,7 @@ import time
 
 __title__ = "CAM Path Compound with Tool Controller"
 __author__ = ""
-__url__ = ""
+__url__ = "https://forum.freecad.org/viewtopic.php?t=96765"
 __doc__ = ""
 
 
@@ -54,12 +51,7 @@ translate = FreeCAD.Qt.translate
 
 class ObjectCompound:
     def __init__(self, obj):
-        # obj.addProperty(
-        #     "App::PropertyLinkList",
-        #     "Group",
-        #     "Path",
-        #     QT_TRANSLATE_NOOP("App::Property", "The toolpath(s) to compound"),
-        # )
+        self.obj = obj
         obj.addProperty(
             "App::PropertyBool",
             "Active",
@@ -95,9 +87,10 @@ class ObjectCompound:
             "Path",
             QT_TRANSLATE_NOOP("App::Property", "Operations Cycle Time Estimation"),
         )
-        obj.Active = True
         obj.Proxy = self
+        obj.Active = True
         obj.setEditorMode("CycleTime", 1)  # read-only
+        obj.setEditorMode("ToolController", 3)  # read-only and hidden
 
     def dumps(self):
         return None
@@ -105,46 +98,43 @@ class ObjectCompound:
     def loads(self, state):
         return None
 
+    def onDelete(self, obj, args):
+        print("onDelete from class ObjectCompound")
+        # Does not work. Do not undestand why ...
+        # Someone who read this, please explain the reason )))
+        # For workaround added onDelete() to class ViewProviderCompound
+        return True
+
     def onChanged(self, obj, prop):
-        pass
+        return None
 
     def onDocumentRestored(self, obj):
-        """onDocumentRestored(obj) ... Called automatically when document is restored."""
-
-        if not hasattr(obj, "Active"):
-            obj.addProperty(
-                "App::PropertyBool",
-                "Active",
-                "Path",
-                QT_TRANSLATE_NOOP(
-                    "PathOp", "Make False, to prevent operation from generating code"
-                ),
-            )
-            obj.Active = True
+        return None
 
     def execute(self, obj):
-        if isinstance(obj.Group, list):
-            group = obj.Group
+        # Set ToolController if identical for all operations in Group
+        obj.ToolController = None
+        if isinstance(obj.Group, list) and len(obj.Group) > 0:
+            tcs = [op.ToolController for op in obj.Group]
+            if len(set(tcs)) == 1 and tcs[0]:
+                obj.ToolController = tcs[0]
 
-        if len(group) == 0:
-            return
+        # Do not generate Path and clear current Path,
+        # if PathCompound not Active or ToolController not set
+        if not obj.Active or not obj.ToolController:
+            obj.Path = Path.Path()
+        else:
+            obj.Path = Compound(obj.Group).getPath()
+            obj.CycleTime = self.getCycleTimeEstimate(obj)
 
-        obj.ToolController = toolController(group[0])
-
-        # Do not generate paths and clear current Path data if operation not
-        if not obj.Active:
-            if obj.Path:
-                obj.Path = Path.Path()
-            return
-
-        obj.Path = Compound(obj.Group).getPath()
-        obj.CycleTime = self.getCycleTimeEstimate(obj)
-        # self.job.Proxy.getCycleTime()
+        if not obj.ToolController:
+            Path.Log.error(
+                translate("CAM", "Tool Controllers of the combined objects is different or None.")
+            )
+            return translate("CAM", "Tool Error")
 
     def getCycleTimeEstimate(self, obj):
-
         tc = obj.ToolController
-
         if tc is None or tc.ToolNumber == 0:
             Path.Log.error(translate("CAM", "No Tool Controller selected."))
             return translate("CAM", "Tool Error")
@@ -175,49 +165,41 @@ class ObjectCompound:
 
         # Get the cycle time in seconds
         seconds = obj.Path.getCycleTime(hFeedrate, vFeedrate, hRapidrate, vRapidrate)
-
-        if not seconds or math.isnan(seconds):
+        if math.isnan(seconds):
             return translate("CAM", "Cycletime Error")
 
         # Convert the cycle time to a HH:MM:SS format
         cycleTime = time.strftime("%H:%M:%S", time.gmtime(seconds))
-
         return cycleTime
 
 
 class Compound:
     def __init__(self, GroupList):
-        self.GroupList = list()
+        if GroupList and isinstance(GroupList, list):
+            self.GroupList = GroupList
+        else:
+            self.GroupList = list()
 
-        if GroupList:
-            if isinstance(GroupList, list):
-                self.GroupList = GroupList
-            else:
-                self.GroupList = [GroupList]
+    def preprocessPath(self, pathObj):
+        # Here we can change gcode by template
+        preprocessPathObj = pathObj
+        return preprocessPathObj
 
-    # Public method
     def getPath(self):
-        """getPath() ... Call this method on an instance of the class to generate and return
-        path data for the requested path array."""
+        # Call this method on an instance of the class
+        # to generate and return Path of the combined operations
+        combinedPathObj = Path.Path()
+        for operation in self.GroupList:
+            combinedPathObj.addCommands(operation.Path.Commands)
+        resultPathObj = self.preprocessPath(combinedPathObj)
 
-        output = ""
-        base = self.GroupList
-        for b in base:
-            np = Path.Path(b.Path.Commands)
-            output += np.toGCode()
-
-        # return output
-        return Path.Path(output)
+        # return combined and pre-processed Path object
+        return resultPathObj
 
 
-class ViewProviderArray:
+class ViewProviderCompound:
     def __init__(self, vobj):
-        self.Object = vobj.Object
-        vobj.Proxy = self
-
-    def attach(self, vobj):
-        self.Object = vobj.Object
-        return
+        self.attach(vobj)
 
     def dumps(self):
         return None
@@ -225,12 +207,25 @@ class ViewProviderArray:
     def loads(self, state):
         return None
 
+    def attach(self, vobj):
+        self.vobj = vobj
+        self.obj = vobj.Object
+
     def claimChildren(self):
-        if hasattr(self, "Object"):
-            if hasattr(self.Object, "Base"):
-                if self.Object.Base:
-                    return self.Object.Base
-        return []
+        if hasattr(self.obj, "Group"):
+            return self.obj.Group
+        else:
+            return []
+
+    def getIcon(self):
+        return ":/icons/CAM_CompoundTC.svg"
+
+    def onDelete(self, vobj, args=None):
+        jobObj = PathUtils.findParentJob(self.obj)
+        for operation in self.obj.Group:
+            PathUtils.addToJob(operation, jobObj.Name)
+            operation.ViewObject.Visibility = True
+        return True
 
 
 class commandPathCompoundTC:
@@ -252,33 +247,24 @@ class commandPathCompoundTC:
     def Activated(self):
         doc = FreeCAD.ActiveDocument
 
-        FreeCAD.ActiveDocument.openTransaction("Create Array")
-
-        compoundObj = doc.addObject("Path::FeatureCompoundPython", "PathCompound")
-        ObjectCompound(compoundObj)
-
-        selection = FreeCADGui.Selection.getSelection()
         groupObjs = []
+        selection = FreeCADGui.Selection.getSelection()
         for sel in selection:
             if isinstance(sel.Proxy, Path.Op.Base.ObjectOp):
                 sel.ViewObject.Visibility = False
                 groupObjs.append(sel)
 
-        # Get 'Operations' group object before add Paths to Compound
-        operationsGroup = groupObjs[0].InList[0]
-
+        jobObj = PathUtils.findParentJob(groupObjs[0])
+        compoundObj = doc.addObject("Path::FeatureCompoundPython", "PathCompound")
+        compoundObj.ViewObject.Proxy = 0
+        compoundObj.ViewObject.Proxy = ViewProviderCompound(compoundObj.ViewObject)
+        PathUtils.addToJob(compoundObj, jobObj.Name)
+        compoundObj.Proxy = ObjectCompound(compoundObj)
         compoundObj.Group = groupObjs
-        PathUtils.addToJob(compoundObj)
 
         # Remove Path objects from 'Operations' group to exclude gcode duplication
-        operationsGroup.removeObjects(groupObjs)
+        jobObj.Operations.removeObjects(groupObjs)
 
-        compoundObj.ViewObject.Proxy = 0
-
-        # PathUtils.getToolControllers = _getToolControllers
-        # _addBaseProperties(compoundObj)
-        # _addToolController(compoundObj, groupObjs)
-        FreeCAD.ActiveDocument.commitTransaction()
         doc.recompute()
 
 
