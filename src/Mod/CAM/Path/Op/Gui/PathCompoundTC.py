@@ -31,6 +31,7 @@ from Path.Dressup.Utils import toolController
 from PySide.QtCore import QT_TRANSLATE_NOOP
 
 import math
+import re
 import time
 
 __title__ = "CAM Path Compound with Tool Controller"
@@ -87,8 +88,15 @@ class ObjectCompound:
             "Path",
             QT_TRANSLATE_NOOP("App::Property", "Operations Cycle Time Estimation"),
         )
+        obj.addProperty(
+            "App::PropertyBool",
+            "KeepToolDown",
+            "Path",
+            QT_TRANSLATE_NOOP("App::Property", "Attempts to avoid unnecessary retractions."),
+        )
         obj.Proxy = self
         obj.Active = True
+        obj.KeepToolDown = False
         obj.setEditorMode("CycleTime", 1)  # read-only
         obj.setEditorMode("ToolController", 3)  # read-only and hidden
 
@@ -124,7 +132,9 @@ class ObjectCompound:
         if not obj.Active or not obj.ToolController:
             obj.Path = Path.Path()
         else:
-            obj.Path = Compound(obj.Group).getPath()
+
+            threshold = obj.ToolController.Tool.Diameter.Value if obj.KeepToolDown else None
+            obj.Path = Compound(obj.Group).getPath(threshold)
             obj.CycleTime = self.getCycleTimeEstimate(obj)
 
         if not obj.ToolController:
@@ -180,18 +190,75 @@ class Compound:
         else:
             self.GroupList = list()
 
-    def preprocessPath(self, pathObj):
+    def preprocessPath(self, pathObj, threshold=None):
         # Here we can change gcode by template
-        preprocessPathObj = pathObj
-        return preprocessPathObj
 
-    def getPath(self):
+        # received 'threshold' value indicate that KeepToolDown is True
+        if threshold:
+            isfullyDefined = False  # Position of the tool is unknown in the beginning
+            positionPrev = None  #    Any prevision position
+            positionNext = None  #    Any next position
+            G123Prev = None  #        Prevision position with mill processing
+            G123Next = None  #        Next position with mill processing
+            tempG0 = []  #            Temporary list for num G0 commands
+            uselessG0 = []  #         List num commands G0 which need to comment
+            counter = 0  #            Commands counter
+
+            for command in pathObj.Commands:
+                if (
+                    not isfullyDefined
+                    and re.search(r"^G0?[0123]$", command.Name, re.IGNORECASE)
+                    and command.x
+                    and command.y
+                    and command.z
+                ):
+                    positionNext = command.Placement.Base
+                    positionPrev = positionNext
+                    G123Next = positionNext
+                    G123Prev = positionNext
+                    isfullyDefined = True
+
+                if isfullyDefined and re.search(r"^G0?[0]$", command.Name, re.IGNORECASE):
+                    # Temporary storage for G0, which will be cleaned when meeting with G1|G2|G3
+                    tempG0.append(counter)
+
+                if isfullyDefined and re.search(r"^G0?[0123]$", command.Name, re.IGNORECASE):
+                    # Get position for any movement command
+                    positionNext = command.Placement.Base
+
+                if isfullyDefined and re.search(r"^G0?[123]$", command.Name, re.IGNORECASE):
+                    # Get position for mill command
+                    G123Next = command.Placement.Base
+                    # Distance between mill commands (do not take into account Z)
+                    p1 = G123Prev
+                    p2 = positionNext
+                    p1.z = 0
+                    p2.z = 0
+                    delta = p1.distanceToPoint(p2)
+                    if tempG0 and delta <= threshold:
+                        uselessG0.extend(tempG0)
+                    tempG0.clear()
+
+                G123Prev = G123Next
+                positionPrev = positionNext
+                counter += 1
+
+            # preprocessPathObj = Path.Path()
+            for i in uselessG0:
+                temp = Path.Path(f"({pathObj.Commands[i].toGCode()})")
+                pathObj.deleteCommand(i)
+                pathObj.insertCommand(temp.Commands[0], i)
+
+        return pathObj
+
+    def getPath(self, threshold=None):
         # Call this method on an instance of the class
         # to generate and return Path of the combined operations
         combinedPathObj = Path.Path()
         for operation in self.GroupList:
             combinedPathObj.addCommands(operation.Path.Commands)
-        resultPathObj = self.preprocessPath(combinedPathObj)
+
+        resultPathObj = self.preprocessPath(combinedPathObj, threshold)
 
         # return combined and pre-processed Path object
         return resultPathObj
@@ -250,7 +317,7 @@ class commandPathCompoundTC:
         groupObjs = []
         selection = FreeCADGui.Selection.getSelection()
         for sel in selection:
-            if isinstance(sel.Proxy, Path.Op.Base.ObjectOp):
+            if hasattr(sel, "Path"):
                 sel.ViewObject.Visibility = False
                 groupObjs.append(sel)
 
