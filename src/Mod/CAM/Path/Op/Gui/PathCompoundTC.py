@@ -94,9 +94,16 @@ class ObjectCompound:
             "Path",
             QT_TRANSLATE_NOOP("App::Property", "Attempts to avoid unnecessary retractions."),
         )
+        obj.addProperty(
+            "App::PropertyBool",
+            "RemoveG0X0Y0",
+            "Path",
+            QT_TRANSLATE_NOOP("App::Property", "Attempts to avoid unnecessary movements G0 X0 Y0."),
+        )
         obj.Proxy = self
         obj.Active = True
         obj.KeepToolDown = False
+        obj.RemoveG0X0Y0 = False
         obj.setEditorMode("CycleTime", 1)  # read-only
         obj.setEditorMode("ToolController", 3)  # read-only and hidden
 
@@ -133,8 +140,8 @@ class ObjectCompound:
             obj.Path = Path.Path()
         else:
 
-            threshold = obj.ToolController.Tool.Diameter.Value if obj.KeepToolDown else None
-            obj.Path = Compound(obj.Group).getPath(threshold)
+            threshold = 1.01 * obj.ToolController.Tool.Diameter.Value if obj.KeepToolDown else None
+            obj.Path = Compound(obj.Group).getPath(threshold, obj.RemoveG0X0Y0)
             obj.CycleTime = self.getCycleTimeEstimate(obj)
 
         if not obj.ToolController:
@@ -190,10 +197,10 @@ class Compound:
         else:
             self.GroupList = list()
 
-    def preprocessPath(self, pathObj, threshold=None):
+    def preprocessPath(self, pathObj, threshold=None, RemoveG0X0Y0=False):
         # Here we can change gcode by template
 
-        # received 'threshold' value indicate that KeepToolDown is True
+        # Received 'threshold' value indicate that KeepToolDown is True
         if threshold:
             isfullyDefined = False  # Position of the tool is unknown in the beginning
             positionPrev = None  #    Any prevision position
@@ -249,16 +256,30 @@ class Compound:
                 pathObj.deleteCommand(i)
                 pathObj.insertCommand(temp.Commands[0], i)
 
+        # Remove movements G0 X0 Y0
+        if RemoveG0X0Y0:
+            uselessG0 = []
+            counter = 0
+            for command in pathObj.Commands:
+                if re.search(r"^G0?[0]$", command.Name, re.IGNORECASE):
+                    if command.Placement.Base == FreeCAD.Vector():
+                        uselessG0.append(counter)
+                counter += 1
+            for i in uselessG0:
+                temp = Path.Path(f"({pathObj.Commands[i].toGCode()})")
+                pathObj.deleteCommand(i)
+                pathObj.insertCommand(temp.Commands[0], i)
+
         return pathObj
 
-    def getPath(self, threshold=None):
+    def getPath(self, threshold=None, RemoveG0X0Y0=False):
         # Call this method on an instance of the class
         # to generate and return Path of the combined operations
         combinedPathObj = Path.Path()
         for operation in self.GroupList:
             combinedPathObj.addCommands(operation.Path.Commands)
 
-        resultPathObj = self.preprocessPath(combinedPathObj, threshold)
+        resultPathObj = self.preprocessPath(combinedPathObj, threshold, RemoveG0X0Y0)
 
         # return combined and pre-processed Path object
         return resultPathObj
