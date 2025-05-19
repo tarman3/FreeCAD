@@ -146,8 +146,6 @@ class ObjectArray:
         self.setEditorModes(obj)
         obj.Proxy = self
 
-        self.FirstRun = True
-
     def dumps(self):
         return None
 
@@ -206,11 +204,9 @@ class ObjectArray:
 
         self.setEditorModes(obj)
 
-        self.FirstRun = True
-
-    def execute(self, obj):
-        if FreeCAD.GuiUp and self.FirstRun:
-            self.FirstRun = False
+        global warningMessageAboutOldArrayAlreadyShowed
+        if FreeCAD.GuiUp and not warningMessageAboutOldArrayAlreadyShowed:
+            warningMessageAboutOldArrayAlreadyShowed = True
             QtGui.QMessageBox.warning(
                 None,
                 QT_TRANSLATE_NOOP("CAM_ArrayOp", "Operation is deprecated"),
@@ -225,6 +221,8 @@ class ObjectArray:
                     ),
                 ),
             )
+
+    def execute(self, obj):
         # backwards compatibility for PathArrays created before support for multiple bases
         if isinstance(obj.Base, list):
             base = obj.Base
@@ -514,5 +512,7 @@ class CommandPathArray:
 
 
 if FreeCAD.GuiUp:
+    global warningMessageAboutOldArrayAlreadyShowed
+    warningMessageAboutOldArrayAlreadyShowed = False
     # register the FreeCAD command
     FreeCADGui.addCommand("CAM_Array", CommandPathArray())
