@@ -174,15 +174,6 @@ class ObjectArray:
             angleMode = copiesMode = centreMode = 0
             copiesXMode = copiesYMode = offsetMode = swapDirectionMode = 2
 
-        if not hasattr(obj, "JitterSeed"):
-            obj.addProperty(
-                "App::PropertyInteger",
-                "JitterSeed",
-                "Path",
-                QtCore.QT_TRANSLATE_NOOP("App::Property", "Seed value for jitter randomness"),
-            )
-            obj.JitterSeed = 0
-
         obj.setEditorMode("Angle", angleMode)
         obj.setEditorMode("Copies", copiesMode)
         obj.setEditorMode("Centre", centreMode)
@@ -212,6 +203,15 @@ class ObjectArray:
                 ),
             )
             obj.Active = True
+
+        if not hasattr(obj, "JitterSeed"):
+            obj.addProperty(
+                "App::PropertyInteger",
+                "JitterSeed",
+                "Path",
+                QtCore.QT_TRANSLATE_NOOP("App::Property", "Seed value for jitter randomness"),
+            )
+            obj.JitterSeed = 0
 
         if not hasattr(obj, "CycleTime"):
             obj.addProperty(
