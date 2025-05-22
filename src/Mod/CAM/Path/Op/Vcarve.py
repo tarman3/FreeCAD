@@ -598,8 +598,16 @@ class ObjectVcarve(PathEngraveBase.ObjectOp):
             e = edge_list[0]
             newPosition = e.valueAt(e.FirstParameter)
 
-            hSpeed = obj.ToolController.HorizFeed.Value
-            vSpeed = obj.ToolController.VertFeed.Value
+            hSpeed = (
+                obj.HorizFeed.Value
+                if hasattr(obj, "HorizFeed") and obj.HorizFeed.Value
+                else obj.ToolController.HorizFeed.Value
+            )
+            vSpeed = (
+                obj.VertFeed.Value
+                if hasattr(obj, "VertFeed") and obj.VertFeed.Value
+                else obj.ToolController.VertFeed.Value
+            )
 
             # check if we can smart-skip using G0 repositioning which is slow
             if not canSkipRepositioning(positionHistory, newPosition, obj.Tolerance):

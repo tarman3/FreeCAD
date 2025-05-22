@@ -405,7 +405,12 @@ class ObjectDrilling(PathCircularHoleBase.ObjectOp):
                 machinestate.Z = obj.StartDepth.Value
 
         # Apply feedrates to commands
-        PathFeedRate.setFeedRate(self.commandlist, obj.ToolController)
+        if hasattr(obj, "HorizFeed") and hasattr(obj, "VertFeed"):
+            PathFeedRate.setFeedRate(
+                self.commandlist, obj.ToolController, obj.HorizFeed, obj.VertFeed
+            )
+        else:
+            PathFeedRate.setFeedRate(self.commandlist, obj.ToolController)
 
     def _executeTapping(self, obj, holes):
         """_executeTapping(obj, holes) ... generate tapping operation for each hole in holes."""

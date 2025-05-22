@@ -122,6 +122,11 @@ class PropertyLength(PropertyQuantity):
         return "Length"
 
 
+class PropertySpeed(PropertyQuantity):
+    def typeString(self):
+        return "Speed"
+
+
 class PropertyFloat(Property):
     def typeString(self):
         return "Float"
@@ -197,6 +202,7 @@ class OpPrototype(object):
         "App::PropertyMap": PropertyMap,
         "App::PropertyPercent": PropertyPercent,
         "App::PropertyPlacement": Property,
+        "App::PropertySpeed": PropertySpeed,
         "App::PropertyString": PropertyString,
         "App::PropertyStringList": Property,
         "App::PropertyVector": Property,

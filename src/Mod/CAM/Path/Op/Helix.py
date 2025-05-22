@@ -852,7 +852,12 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
                         self.commandlist.append(cmd)
                         machinestate.addCommand(cmd)
 
-        PathFeedRate.setFeedRate(self.commandlist, obj.ToolController)
+        if hasattr(obj, "HorizFeed") and hasattr(obj, "VertFeed"):
+            PathFeedRate.setFeedRate(
+                self.commandlist, obj.ToolController, obj.HorizFeed, obj.VertFeed
+            )
+        else:
+            PathFeedRate.setFeedRate(self.commandlist, obj.ToolController)
 
         horizFeed = obj.ToolController.HorizFeed.Value
         vertFeed = obj.ToolController.VertFeed.Value
