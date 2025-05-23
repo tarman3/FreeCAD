@@ -26,6 +26,7 @@ import Path
 import Path.Base.Generator.threadmilling as threadmilling
 import Path.Op.Base as PathOp
 import Path.Op.CircularHoleBase as PathCircularHoleBase
+from PathScripts.PathUtils import sort_locations
 import math
 from PySide.QtCore import QT_TRANSLATE_NOOP
 
@@ -482,6 +483,7 @@ class ObjectThreadMilling(PathCircularHoleBase.ObjectOp):
                 Path.Log.error("Cannot create thread with pitch {}".format(pitch))
                 return
 
+            holes = sort_locations(holes, ["x", "y"])
             # rapid to clearance height
             for loc in holes:
                 self.executeThreadMill(
