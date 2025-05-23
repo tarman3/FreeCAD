@@ -8,7 +8,6 @@
 
 #include <limits>
 #include <map>
-#include <QDebug>
 
 double CArea::m_accuracy = 0.01;
 double CArea::m_units = 1.0;
@@ -648,16 +647,15 @@ void CArea::MakePocketToolpath(std::list<CCurve>& curve_list, const CAreaPocketP
     a_offset.Offset(current_offset);
 
     if (params.mode == ZigZagPocketMode || params.mode == ZigZagThenSingleOffsetPocketMode) {
-        qDebug("1 ZigZagPocketMode or ZigZagThenSingleOffsetPocketMode");
         if (params.mode != ZigZagPocketMode) {
-            a_offset.Offset(params.tool_radius / 3);
+            a_offset.Offset(params.extra_offsetzz);
         }
 
         curve_list_for_zigs = &curve_list;
         zigzag(a_offset);
 
         if (params.mode != ZigZagPocketMode) {
-            a_offset.Offset(-params.tool_radius / 3);
+            a_offset.Offset(-params.extra_offsetzz);
         }
     }
     else if (params.mode == SpiralPocketMode) {
@@ -681,7 +679,6 @@ void CArea::MakePocketToolpath(std::list<CCurve>& curve_list, const CAreaPocketP
 
     if (params.mode == SingleOffsetPocketMode || params.mode == ZigZagThenSingleOffsetPocketMode) {
         // if there are already curves, attempt to start the offset from the current tool position
-        qDebug("2 SingleOffsetPocketMode or ZigZagThenSingleOffsetPocketMode");
         bool done = false;
         if (!curve_list.empty() && !curve_list.back().m_vertices.empty()) {
             // find the closest curve to the start point
