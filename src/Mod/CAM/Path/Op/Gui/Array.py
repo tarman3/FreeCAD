@@ -205,7 +205,11 @@ class ObjectArray:
         self.setEditorModes(obj)
 
         global warningMessageAboutOldArrayAlreadyShowed
-        if FreeCAD.GuiUp and not warningMessageAboutOldArrayAlreadyShowed:
+        if (
+            FreeCAD.GuiUp
+            and not self.isBaseCompatible(obj)
+            and not warningMessageAboutOldArrayAlreadyShowed
+        ):
             warningMessageAboutOldArrayAlreadyShowed = True
             QtGui.QMessageBox.warning(
                 None,
@@ -229,16 +233,13 @@ class ObjectArray:
         else:
             base = [obj.Base]
 
-        if len(base) == 0:
+        # Do not generate paths and clear current Path data
+        # if operation not Active or no base operations or operations not compatible
+        if not obj.Active or len(base) == 0 or not self.isBaseCompatible(obj):
+            obj.Path = Path.Path()
             return
 
         obj.ToolController = toolController(base[0])
-
-        # Do not generate paths and clear current Path data if operation not
-        if not obj.Active:
-            if obj.Path:
-                obj.Path = Path.Path()
-            return
 
         # use seed if specified, otherwise default to object name for consistency during recomputes
         seed = obj.JitterSeed or obj.Name
@@ -259,6 +260,27 @@ class ObjectArray:
         )
 
         obj.Path = pa.getPath()
+
+    def isBaseCompatible(self, obj):
+        isCoolantModeNone = set([b.CoolantMode for b in obj.Base]) == {"None"}
+        if not isCoolantModeNone:
+            Path.Log.warning(
+                translate(
+                    "PathArray",
+                    "Arrays not compatible with coolant modes.",
+                )
+            )
+
+        tcs = set([b.ToolController for b in obj.Base])
+        isIdenticalTC = (tcs != {None}) and (len(tcs) == 1)
+        if not isIdenticalTC:
+            Path.Log.warning(
+                translate(
+                    "PathArray",
+                    "Arrays of toolpaths having different tool controllers or tool controller not selected.",
+                )
+            )
+        return isCoolantModeNone and isIdenticalTC
 
 
 class PathArray:
@@ -317,10 +339,6 @@ class PathArray:
         """getPath() ... Call this method on an instance of the class to generate and return
         path data for the requested path array."""
 
-        if len(self.baseList) == 0:
-            Path.Log.error(translate("PathArray", "No base objects for PathArray."))
-            return None
-
         base = self.baseList
         for b in base:
             if not b.isDerivedFrom("Path::Feature"):
@@ -331,15 +349,6 @@ class PathArray:
             b_tool_controller = toolController(b)
             if not b_tool_controller:
                 return
-
-            if b_tool_controller != toolController(base[0]):
-                # this may be important if Job output is split by tool controller
-                Path.Log.warning(
-                    translate(
-                        "PathArray",
-                        "Arrays of toolpaths having different tool controllers are handled according to the tool controller of the first path.",
-                    )
-                )
 
         # build copies
         output = ""
@@ -466,7 +475,10 @@ class CommandPathArray:
         return {
             "Pixmap": "CAM_Array",
             "MenuText": QT_TRANSLATE_NOOP("CAM_Array", "Array"),
-            "ToolTip": QT_TRANSLATE_NOOP("CAM_Array", "Creates an array from selected toolpath(s)"),
+            "ToolTip": QT_TRANSLATE_NOOP(
+                "CAM_Array",
+                "Creates an array from selected toolpath(s) with identical tool controllers",
+            ),
         }
 
     def IsActive(self):
