@@ -287,7 +287,11 @@ class ObjectOp(PathOp.ObjectOp):
             pathParams["sort_mode"] = 0
 
         if not self.areaOpRetractTool(obj):
-            pathParams["threshold"] = 2.001 * self.radius
+            if "MillFace" in obj.Name:
+                pathParams["threshold"] = 2.010 * 1.414 * self.radius
+                print(f'    {obj.Label}, threshold = {pathParams["threshold"]}')
+            else:
+                pathParams["threshold"] = 2.001 * self.radius
 
         if self.endVector is not None:
             pathParams["start"] = self.endVector
