@@ -505,6 +505,207 @@ class TestPathPostUtils(unittest.TestCase):
         self.assertTrue(len([c for c in results.Commands if c.Name in ["G2", "G3"]]) == 0)
 
 
+    def test020(self):
+        """ Test Termination of Canned Cycles"""
+        # Test basic cycle termination when parameters change
+        cmd1 = Path.Command('G81', {'X': 1.0, 'Y': 1.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0})
+        cmd1.Annotations = {"RetractMode": "G98"}
+        cmd2 = Path.Command('G81', {'X': 2.0, 'Y': 2.0, 'Z': -1.0, 'R': 0.2, 'F': 10.0})
+        cmd2.Annotations = {"RetractMode": "G98"}
+        
+        test_path = Path.Path([
+            Path.Command('G0', {'Z': 1.0}),
+            cmd1,
+            cmd2,  # Different Z depth
+            Path.Command('G1', {'X': 3.0, 'Y': 3.0})
+        ])
+
+        expected_path = Path.Path([
+            Path.Command('G0', {'Z': 1.0}),
+            Path.Command('G98'),  # Retract mode for first cycle
+            Path.Command('G81', {'X': 1.0, 'Y': 1.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0}),
+            Path.Command('G80'),  # Terminate due to parameter change
+            Path.Command('G98'),  # Retract mode for second cycle
+            Path.Command('G81', {'X': 2.0, 'Y': 2.0, 'Z': -1.0, 'R': 0.2, 'F': 10.0}),
+            Path.Command('G80'),  # Final termination
+            Path.Command('G1', {'X': 3.0, 'Y': 3.0})
+        ])
+
+        result = PostUtils.cannedCycleTerminator(test_path)
+        
+        self.assertEqual(len(result.Commands), len(expected_path.Commands))
+        for i, (res, exp) in enumerate(zip(result.Commands, expected_path.Commands)):
+            self.assertEqual(res.Name, exp.Name, f"Command {i}: name mismatch")
+            self.assertEqual(res.Parameters, exp.Parameters, f"Command {i}: parameters mismatch")
+    
+    def test030_canned_cycle_termination_with_non_cycle_commands(self):
+        """Test cycle termination when non-cycle commands are encountered"""
+        cmd1 = Path.Command('G81', {'X': 1.0, 'Y': 1.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0})
+        cmd1.Annotations = {"RetractMode": "G98"}
+        cmd2 = Path.Command('G82', {'X': 3.0, 'Y': 3.0, 'Z': -1.0, 'R': 0.2, 'P': 1.0, 'F': 10.0})
+        cmd2.Annotations = {"RetractMode": "G98"}
+        
+        test_path = Path.Path([
+            cmd1,
+            Path.Command('G0', {'X': 2.0, 'Y': 2.0}),  # Non-cycle command
+            cmd2,
+        ])
+
+        expected_path = Path.Path([
+            Path.Command('G98'),  # Retract mode for first cycle
+            Path.Command('G81', {'X': 1.0, 'Y': 1.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0}),
+            Path.Command('G80'),  # Terminate before non-cycle command
+            Path.Command('G0', {'X': 2.0, 'Y': 2.0}),
+            Path.Command('G98'),  # Retract mode for second cycle
+            Path.Command('G82', {'X': 3.0, 'Y': 3.0, 'Z': -1.0, 'R': 0.2, 'P': 1.0, 'F': 10.0}),
+            Path.Command('G80'),  # Final termination
+        ])
+
+        result = PostUtils.cannedCycleTerminator(test_path)
+        self.assertEqual(len(result.Commands), len(expected_path.Commands))
+        for i, (res, exp) in enumerate(zip(result.Commands, expected_path.Commands)):
+            self.assertEqual(res.Name, exp.Name, f"Command {i}: name mismatch")
+            self.assertEqual(res.Parameters, exp.Parameters, f"Command {i}: parameters mismatch")
+    
+    def test040_canned_cycle_modal_same_parameters(self):
+        """Test modal cycles with same parameters don't get terminated"""
+        cmd1 = Path.Command('G81', {'X': 1.0, 'Y': 1.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0})
+        cmd1.Annotations = {"RetractMode": "G98"}
+        cmd2 = Path.Command('G81', {'X': 2.0, 'Y': 2.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0})
+        cmd2.Annotations = {"RetractMode": "G98"}
+        cmd3 = Path.Command('G81', {'X': 3.0, 'Y': 3.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0})
+        cmd3.Annotations = {"RetractMode": "G98"}
+        
+        test_path = Path.Path([
+            cmd1,
+            cmd2,  # Modal - same parameters
+            cmd3,  # Modal - same parameters
+        ])
+
+        expected_path = Path.Path([
+            Path.Command('G98'),  # Retract mode at start of cycle
+            Path.Command('G81', {'X': 1.0, 'Y': 1.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0}),
+            Path.Command('G81', {'X': 2.0, 'Y': 2.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0}),  # No termination - same params
+            Path.Command('G81', {'X': 3.0, 'Y': 3.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0}),  # No termination - same params
+            Path.Command('G80'),  # Final termination
+        ])
+
+        result = PostUtils.cannedCycleTerminator(test_path)
+        self.assertEqual(len(result.Commands), len(expected_path.Commands))
+        for i, (res, exp) in enumerate(zip(result.Commands, expected_path.Commands)):
+            self.assertEqual(res.Name, exp.Name, f"Command {i}: name mismatch")
+            self.assertEqual(res.Parameters, exp.Parameters, f"Command {i}: parameters mismatch")
+    
+    def test050_canned_cycle_feed_rate_change(self):
+        """Test cycle termination when feed rate changes"""
+        cmd1 = Path.Command('G81', {'X': 1.0, 'Y': 1.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0})
+        cmd1.Annotations = {"RetractMode": "G98"}
+        cmd2 = Path.Command('G81', {'X': 2.0, 'Y': 2.0, 'Z': -0.5, 'R': 0.1, 'F': 20.0})
+        cmd2.Annotations = {"RetractMode": "G98"}
+        
+        test_path = Path.Path([
+            cmd1,
+            cmd2,  # Different feed rate
+        ])
+
+        expected_path = Path.Path([
+            Path.Command('G98'),  # Retract mode for first cycle
+            Path.Command('G81', {'X': 1.0, 'Y': 1.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0}),
+            Path.Command('G80'),  # Terminate due to feed rate change
+            Path.Command('G98'),  # Retract mode for second cycle
+            Path.Command('G81', {'X': 2.0, 'Y': 2.0, 'Z': -0.5, 'R': 0.1, 'F': 20.0}),
+            Path.Command('G80'),  # Final termination
+        ])
+
+        result = PostUtils.cannedCycleTerminator(test_path)
+        self.assertEqual(len(result.Commands), len(expected_path.Commands))
+        for i, (res, exp) in enumerate(zip(result.Commands, expected_path.Commands)):
+            self.assertEqual(res.Name, exp.Name, f"Command {i}: name mismatch")
+            self.assertEqual(res.Parameters, exp.Parameters, f"Command {i}: parameters mismatch")
+    
+    def test060_canned_cycle_retract_plane_change(self):
+        """Test cycle termination when retract plane changes"""
+        cmd1 = Path.Command('G81', {'X': 1.0, 'Y': 1.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0})
+        cmd1.Annotations = {"RetractMode": "G98"}
+        cmd2 = Path.Command('G81', {'X': 2.0, 'Y': 2.0, 'Z': -0.5, 'R': 0.2, 'F': 10.0})
+        cmd2.Annotations = {"RetractMode": "G98"}
+        
+        test_path = Path.Path([
+            cmd1,
+            cmd2,  # Different R plane
+        ])
+
+        expected_path = Path.Path([
+            Path.Command('G98'),  # Retract mode for first cycle
+            Path.Command('G81', {'X': 1.0, 'Y': 1.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0}),
+            Path.Command('G80'),  # Terminate due to R plane change
+            Path.Command('G98'),  # Retract mode for second cycle
+            Path.Command('G81', {'X': 2.0, 'Y': 2.0, 'Z': -0.5, 'R': 0.2, 'F': 10.0}),
+            Path.Command('G80'),  # Final termination
+        ])
+
+        result = PostUtils.cannedCycleTerminator(test_path)
+        self.assertEqual(len(result.Commands), len(expected_path.Commands))
+        for i, (res, exp) in enumerate(zip(result.Commands, expected_path.Commands)):
+            self.assertEqual(res.Name, exp.Name, f"Command {i}: name mismatch")
+            self.assertEqual(res.Parameters, exp.Parameters, f"Command {i}: parameters mismatch")
+    
+    def test070_canned_cycle_mixed_cycle_types(self):
+        """Test termination between different cycle types"""
+        cmd1 = Path.Command('G81', {'X': 1.0, 'Y': 1.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0})
+        cmd1.Annotations = {"RetractMode": "G98"}
+        cmd2 = Path.Command('G82', {'X': 2.0, 'Y': 2.0, 'Z': -0.5, 'R': 0.1, 'P': 1.0, 'F': 10.0})
+        cmd2.Annotations = {"RetractMode": "G98"}
+        
+        test_path = Path.Path([
+            cmd1,
+            cmd2,  # Different cycle type
+        ])
+
+        expected_path = Path.Path([
+            Path.Command('G98'),  # Retract mode for first cycle
+            Path.Command('G81', {'X': 1.0, 'Y': 1.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0}),
+            Path.Command('G80'),  # Terminate due to different cycle type (different parameters)
+            Path.Command('G98'),  # Retract mode for second cycle
+            Path.Command('G82', {'X': 2.0, 'Y': 2.0, 'Z': -0.5, 'R': 0.1, 'P': 1.0, 'F': 10.0}),
+            Path.Command('G80'),  # Final termination
+        ])
+
+        result = PostUtils.cannedCycleTerminator(test_path)
+        self.assertEqual(len(result.Commands), len(expected_path.Commands))
+        for i, (res, exp) in enumerate(zip(result.Commands, expected_path.Commands)):
+            self.assertEqual(res.Name, exp.Name, f"Command {i}: name mismatch")
+            self.assertEqual(res.Parameters, exp.Parameters, f"Command {i}: parameters mismatch")
+    
+    def test080_canned_cycle_retract_mode_change(self):
+        """Test cycle termination and retract mode insertion when RetractMode annotation changes"""
+        # Create commands with RetractMode annotations
+        cmd1 = Path.Command('G81', {'X': 1.0, 'Y': 1.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0})
+        cmd1.Annotations = {"RetractMode": "G98"}
+        
+        cmd2 = Path.Command('G81', {'X': 2.0, 'Y': 2.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0})
+        cmd2.Annotations = {"RetractMode": "G98"}
+        
+        cmd3 = Path.Command('G81', {'X': 3.0, 'Y': 3.0, 'Z': -0.5, 'R': 0.1, 'F': 10.0})
+        cmd3.Annotations = {"RetractMode": "G99"}  # Mode change
+        
+        test_path = Path.Path([cmd1, cmd2, cmd3])
+        
+        result = PostUtils.cannedCycleTerminator(test_path)
+        
+        # Expected: G98, G81, G81 (modal), G80 (terminate), G99, G81, G80 (final)
+        self.assertEqual(result.Commands[0].Name, "G98")
+        self.assertEqual(result.Commands[1].Name, "G81")
+        self.assertEqual(result.Commands[2].Name, "G81")
+        self.assertEqual(result.Commands[3].Name, "G80")  # Terminate due to mode change
+        self.assertEqual(result.Commands[4].Name, "G99")  # New retract mode
+        self.assertEqual(result.Commands[5].Name, "G81")
+        self.assertEqual(result.Commands[6].Name, "G80")  # Final termination
+        self.assertEqual(len(result.Commands), 7)
+        
+        
+        
+
 class TestBuildPostList(unittest.TestCase):
     """
     The postlist is the list of postprocessable elements from the job.

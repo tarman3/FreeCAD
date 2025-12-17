@@ -40,6 +40,7 @@ import Path.Base.Util as PathUtil
 import Path.Post.UtilsArguments as PostUtilsArguments
 import Path.Post.UtilsExport as PostUtilsExport
 import Path.Post.PostList as PostList
+import Path.Post.Utils as PostUtils
 
 import FreeCAD
 import Path
@@ -295,6 +296,13 @@ class PostProcessor:
         sublist: Sublist
 
         postables = self._buildPostList()
+
+        # Process canned cycles for drilling operations
+        for _, section in enumerate(postables):
+            _, sublist = section
+            for obj in sublist:
+                if hasattr(obj, "Path"):
+                    obj.Path = PostUtils.cannedCycleTerminator(obj.Path)
 
         Path.Log.debug(f"postables count: {len(postables)}")
 
