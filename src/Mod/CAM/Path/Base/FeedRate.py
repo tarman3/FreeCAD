@@ -24,7 +24,6 @@ import FreeCAD
 import Path
 import Path.Base.MachineState as PathMachineState
 import Part
-from Path.Geom import CmdMoveDrill
 
 __title__ = "Feed Rate Helper Utility"
 __author__ = "sliptonic (Brad Collette)"
