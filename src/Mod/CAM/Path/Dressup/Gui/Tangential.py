@@ -20,13 +20,13 @@
 # *                                                                         *
 # ***************************************************************************
 
-from PySide import QtGui
 from PySide.QtCore import QT_TRANSLATE_NOOP
 import FreeCAD
 import FreeCADGui
 import Path
-import Path.Dressup.Tangential as PathDressupTangential
-import PathGui
+from Path.Dressup import Tangential as PathDressupTangential
+from PathScripts import PathUtils
+from Path.Dressup import Utils as PathDressup
 
 if True:
     Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
@@ -88,6 +88,7 @@ class TaskPanel(object):
 
 class ViewProvider(object):
     def __init__(self, vobj):
+        self.obj = vobj.Object
         vobj.Proxy = self
 
     def attach(self, vobj):
@@ -109,9 +110,25 @@ class ViewProvider(object):
         return None
 
     def claimChildren(self):
-        return [self.Object.Base]
+        if hasattr(self.obj.Base, "InList"):
+            for i in self.obj.Base.InList:
+                if hasattr(i, "Group"):
+                    group = i.Group
+                    for g in group:
+                        if g.Name == self.obj.Base.Name:
+                            group.remove(g)
+                    i.Group = group
+        return [self.obj.Base]
 
-    def onDelete(self, feature, subelements):
+    def onDelete(self, arg1=None, arg2=None):
+        """this makes sure that the base operation is added back to the project and visible"""
+        Path.Log.debug("Deleting Dressup")
+        if arg1.Object and arg1.Object.Base:
+            FreeCADGui.ActiveDocument.getObject(arg1.Object.Base.Name).Visibility = True
+            job = PathUtils.findParentJob(self.obj)
+            if job:
+                job.Proxy.addOperation(arg1.Object.Base, arg1.Object)
+            arg1.Object.Base = None
         return True
 
     def canDragObjects(self):
@@ -130,7 +147,10 @@ class ViewProvider(object):
         feature.Base = incoming_object
 
     def getIcon(self):
-        return ":/icons/CAM_Dressup.svg"
+        if getattr(PathDressup.baseOp(self.obj), "Active", True):
+            return ":/icons/CAM_Dressup.svg"
+        else:
+            return ":/icons/CAM_OpActive.svg"
 
 
 class CommandTangentialDressup:
@@ -173,21 +193,11 @@ class CommandTangentialDressup:
         FreeCADGui.doCommand(
             'obj = FreeCAD.ActiveDocument.addObject("Path::FeaturePython", "TangentialDressup")'
         )
-        FreeCADGui.doCommand(
-            "dbo = Path.Dressup.Tangential.DressupTangential(obj, FreeCAD.ActiveDocument."
-            + selection[0].Name
-            + ", PathScripts.PathUtils.findParentJob(FreeCAD.ActiveDocument."
-            + selection[0].Name
-            + "))"
-        )
         FreeCADGui.doCommand("base = FreeCAD.ActiveDocument." + selection[0].Name)
         FreeCADGui.doCommand("job = PathScripts.PathUtils.findParentJob(base)")
-        FreeCADGui.doCommand("obj.Base = base")
+        FreeCADGui.doCommand("dbo = Path.Dressup.Tangential.DressupTangential(obj, base, job)")
         FreeCADGui.doCommand("job.Proxy.addOperation(obj, base)")
-        FreeCADGui.doCommand(
-            "obj.ViewObject.Proxy = Path.Dressup.Gui.Tangential.ViewProvider(obj.ViewObject)"
-        )
-        FreeCADGui.doCommand("Gui.ActiveDocument.getObject(base.Name).Visibility = False")
+        FreeCADGui.doCommand("Path.Dressup.Gui.Tangential.ViewProvider(obj.ViewObject)")
         FreeCAD.ActiveDocument.commitTransaction()
         FreeCAD.ActiveDocument.recompute()
 

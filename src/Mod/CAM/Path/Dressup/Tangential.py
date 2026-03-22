@@ -20,24 +20,10 @@
 # *                                                                         *
 # ***************************************************************************
 
-from PySide.QtCore import QT_TRANSLATE_NOOP
 import FreeCAD
 import Path
-import Path.Base.Util as PathUtil
-import Path.Dressup.Utils as PathDressup
 import PathScripts.PathUtils as PathUtils
-import Path.Geom as PathGeom
-from Path.Geom import (
-    CmdMoveArc,
-    edgeForCmd,
-    cmdsForEdge,
-    CmdMoveRapid,
-    CmdMoveStraight,
-    CmdMoveDrill,
-    CmdMoveArc,
-)
-import Part
-import Path.Base.MachineState as PathMachineState
+import Constants
 import math
 
 if True:
@@ -66,7 +52,7 @@ class Instruction(object):
 
     def __init__(self, begin, cmd, param=None):
         self.begin = begin
-        if type(cmd) == Path.Command:
+        if isinstance(cmd, Path.Command):
             self.cmd = cmd.Name
             self.param = cmd.Parameters
         else:
@@ -138,7 +124,7 @@ class MoveStraight(Instruction):
         if end == begin:
             Path.Log.debug("MoveStraight: zero-length move, returning 0 angle")
             return (0, 0)
-        a = PathGeom.getAngle(end - begin)
+        a = Path.Geom.getAngle(end - begin)
         Path.Log.debug(
             f"MoveStraight: calculated angle {math.degrees(a):.2f}° from {begin} to {end}"
         )
@@ -159,8 +145,8 @@ class MoveArc(Instruction):
         Path.Log.debug(f"MoveArc: begin={begin}, end={end}, center={center}")
 
         # calculate angle of the hypotenuse at begin and end
-        s0 = PathGeom.getAngle(begin - center)
-        s1 = PathGeom.getAngle(end - center)
+        s0 = Path.Geom.getAngle(begin - center)
+        s1 = Path.Geom.getAngle(end - center)
 
         Path.Log.debug(
             f"MoveArc: radial angles s0={math.degrees(s0):.2f}°, s1={math.degrees(s1):.2f}°"
@@ -223,21 +209,21 @@ class Maneuver(object):
             f"Maneuver.InstructionFromCommand: creating instruction for {cmd.Name} from position {begin}"
         )
 
-        if cmd.Name in CmdMoveStraight + PathGeom.CmdMoveRapid:
+        if cmd.Name in Constants.GCODE_MOVE_LINE:
             instr = MoveStraight(begin, cmd.Name, cmd.Parameters)
-            Path.Log.debug(f"  Created MoveStraight instruction")
+            Path.Log.debug("  Created MoveStraight instruction")
             return instr
-        if cmd.Name in PathGeom.CmdMoveCW:
+        if cmd.Name in Constants.GCODE_MOVE_CW:
             instr = MoveArcCW(begin, cmd.Name, cmd.Parameters)
-            Path.Log.debug(f"  Created MoveArcCW instruction")
+            Path.Log.debug("  Created MoveArcCW instruction")
             return instr
-        if cmd.Name in PathGeom.CmdMoveCCW:
+        if cmd.Name in Constants.GCODE_MOVE_CCW:
             instr = MoveArcCCW(begin, cmd.Name, cmd.Parameters)
-            Path.Log.debug(f"  Created MoveArcCCW instruction")
+            Path.Log.debug("  Created MoveArcCCW instruction")
             return instr
 
         instr = Instruction(begin, cmd.Name, cmd.Parameters)
-        Path.Log.debug(f"  Created generic Instruction")
+        Path.Log.debug("  Created generic Instruction")
         return instr
 
     @classmethod
@@ -277,7 +263,7 @@ class DressupTangential(object):
             "Tangential angle offset in degrees",
         )
         obj.Base = base
-        obj.TangentialAngle = 0.0
+        base.Visibility = False
         obj.Proxy = self
 
         Path.Log.debug(
@@ -293,6 +279,10 @@ class DressupTangential(object):
     def __setstate__(self, state):
         return None
 
+    def onChanged(self, obj, prop):
+        if prop == "Path" and obj.ViewObject:
+            obj.ViewObject.signalChangeIcon()
+
     def execute(self, obj):
         """Execute the tangential dressup operation."""
         Path.Log.debug("DressupTangential.execute() starting")
@@ -307,7 +297,6 @@ class DressupTangential(object):
                 Path.Log.debug(f"Tangential angle offset: {obj.TangentialAngle}°")
 
                 # Create maneuver from the base path
-                maneuver = Maneuver.FromPath(obj.Base.Path)
                 output_commands = []
                 current_position = FreeCAD.Vector(0, 0, 0)
                 move_count = 0
@@ -317,7 +306,7 @@ class DressupTangential(object):
                         f"Processing command {i}: {cmd.Name} with params: {cmd.Parameters}"
                     )
 
-                    if cmd.Name in PathGeom.CmdMoveAll:
+                    if cmd.Name in Constants.GCODE_MOVE_ALL:
                         # This is a move command, calculate tangent angle
                         move_count += 1
                         Path.Log.debug(f"  Move command #{move_count}: {cmd.Name}")
@@ -405,7 +394,7 @@ def Create(base, name="TangentialDressup"):
         TangentialGui.ViewProvider(obj.ViewObject)
         Path.Log.debug("GUI ViewProvider attached")
 
-    PathScripts.PathUtils.addToJob(obj)
+    PathUtils.addToJob(obj)
     Path.Log.info(f"Tangential dressup '{obj.Label}' created successfully")
 
     FreeCAD.ActiveDocument.commitTransaction()
