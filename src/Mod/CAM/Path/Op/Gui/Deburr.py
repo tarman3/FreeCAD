@@ -140,7 +140,12 @@ Command = PathOpGui.SetupOperation(
     TaskPanelOpPage,
     "CAM_Deburr",
     QT_TRANSLATE_NOOP("CAM_Deburr", "Deburr"),
-    QT_TRANSLATE_NOOP("CAM_Deburr", "Creates a Deburr toolpath along Edges or around Faces"),
+    QT_TRANSLATE_NOOP(
+        "CAM_Deburr",
+        "Creates a Deburr toolpath along Edges or around Faces"
+        "\n\nSelect horizontal edges or horizontal face from shape without chamfer"
+        "\nor angled face of chamfer",
+    ),
     PathDeburr.SetupProperties,
 )
 
