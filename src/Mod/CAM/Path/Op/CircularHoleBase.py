@@ -139,6 +139,8 @@ class ObjectOp(PathOp.ObjectOp):
 
     def holeDiameter(self, base, sub):
         """holeDiameter(base, sub) ... returns the diameter of the specified hole."""
+        if sub.startswith("?"):
+            return 0
         try:
             shape = base.Shape.getElement(sub)
             if isinstance(shape, Part.Vertex):
@@ -170,6 +172,9 @@ class ObjectOp(PathOp.ObjectOp):
         """holePosition(base, sub) ... returns a Vector for the position defined by the given features.
         Note that the value for Z is set to 0."""
 
+        if sub.startswith("?"):
+            return None
+
         try:
             shape = base.Shape.getElement(sub)
             if isinstance(shape, Part.Vertex):
@@ -186,8 +191,8 @@ class ObjectOp(PathOp.ObjectOp):
                     if all(Path.Geom.pointsCoincide(center, e.Curve.Center) for e in shape.Edges):
                         return FreeCAD.Vector(center.x, center.y, 0)
             return FreeCAD.Vector(shape.CenterOfMass.x, shape.CenterOfMass.y, 0)
-        except Exception as e:
-            Path.Log.error(e)
+        except Exception:
+            pass
 
         Path.Log.error(
             translate(

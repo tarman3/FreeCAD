@@ -739,14 +739,15 @@ class ObjectOp(object):
     def checkBase(self, obj):
         """checkBase(obj) ... check if Base is valid."""
         if hasattr(obj, "Base"):
-            try:
-                for o, sublist in obj.Base:
-                    for sub in sublist:
+            stale = []
+            for o, sublist in obj.Base:
+                for sub in sublist:
+                    try:
                         o.Shape.getElement(sub)
-            except Exception:
-                Path.Log.error(
-                    "%s - stale base geometry detected - %s, %s" % (obj.Label, o.Label, sub)
-                )
+                    except Exception:
+                        stale.append("%s.%s" % (o.Label, sub))
+            if stale:
+                Path.Log.warning("%s - stale base geometry: %s" % (obj.Label, ", ".join(stale)))
                 self.isBaseValid = False
                 return False
 
@@ -787,7 +788,7 @@ class ObjectOp(object):
         # make sure Base is still valid
         if not self.checkBase(obj):
             obj.Path = Path.Path()
-            raise Exception("Base geometry error!")
+            return
 
         if FeatureTool & self.opFeatures(obj):
             tc = obj.ToolController
