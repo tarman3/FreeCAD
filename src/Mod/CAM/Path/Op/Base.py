@@ -64,6 +64,7 @@ FeatureBaseModels = 0x0800  # Base
 FeatureLocations = 0x1000  # Locations
 FeatureCoolant = 0x2000  # Coolant
 FeatureDiameters = 0x4000  # Turning Diameters
+FeatureExtension = 0x8000  # Extension
 
 FeatureBaseGeometry = FeatureBaseVertexes | FeatureBaseFaces | FeatureBaseEdges
 
@@ -172,6 +173,7 @@ class ObjectOp(object):
         FeatureLocations     ... Base location support
         FeatureCoolant       ... Support for operation coolant
         FeatureDiameters     ... Support for turning operation diameters
+        FeatureExtension     ... Support for Extension
 
     The base class handles all base API and forwards calls to subclasses with
     an op prefix. For instance, an op is not expected to overwrite onChanged(),
@@ -256,6 +258,16 @@ class ObjectOp(object):
             "CollisionClearance",
             "Linking",
             QT_TRANSLATE_NOOP("App::Property", "Distance for collision detection"),
+        )
+
+    def addExtension(self, obj):
+        obj.addProperty(
+            "App::PropertyLength",
+            "ExtensionOffset",
+            "Extension",
+            QT_TRANSLATE_NOOP(
+                "App::Property", "Extension for working area limited by the model shape"
+            ),
         )
 
     def __init__(self, obj, name, parentJob=None):
@@ -436,6 +448,9 @@ class ObjectOp(object):
         if FeatureLinking & features:
             self.addLinking(obj)
 
+        if FeatureExtension & features:
+            self.addExtension(obj)
+
         # members being set later
         self.commandlist = None
         self.horizFeed = None
@@ -606,6 +621,11 @@ class ObjectOp(object):
                 ),
             )
             obj.Workplane = FreeCAD.Vector(0, 0, 1)
+
+        if FeatureExtension & features and not hasattr(obj, "ExtensionOffset"):
+            self.addExtension(obj)
+            if getattr(obj, "ExtensionFeature", None):
+                obj.ExtensionOffset = min(obj.ExtensionLengthDefault, obj.OpToolDiameter.Value / 2)
 
         self.setEditorModes(obj, features)
         self.opOnDocumentRestored(obj)

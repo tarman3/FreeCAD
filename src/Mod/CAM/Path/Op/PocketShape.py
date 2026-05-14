@@ -34,7 +34,6 @@ Part = LazyLoader("Part", globals(), "Part")
 TechDraw = LazyLoader("TechDraw", globals(), "TechDraw")
 math = LazyLoader("math", globals(), "math")
 PathUtils = LazyLoader("PathScripts.PathUtils", globals(), "PathScripts.PathUtils")
-FeatureExtensions = LazyLoader("Path.Op.FeatureExtension", globals(), "Path.Op.FeatureExtension")
 
 translate = FreeCAD.Qt.translate
 
@@ -57,8 +56,8 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
     def areaOpFeatures(self, obj):
         return (
             super(self.__class__, self).areaOpFeatures(obj)
-            | PathOp.FeatureLocations
             | PathOp.FeatureBaseEdges
+            | PathOp.FeatureExtension
         )
 
     def removeHoles(self, solids, face):
@@ -82,7 +81,6 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
                 QT_TRANSLATE_NOOP("App::Property", "Uses the outline of the base geometry."),
             )
 
-        FeatureExtensions.initialize_properties(obj)
         if not hasattr(obj, "CloseOpenPaths"):
             obj.addProperty(
                 "App::PropertyBool",
@@ -108,22 +106,16 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
         obj.Angle = 45
         obj.setEditorMode("Angle", 2)  # hide for default Offset pattern
         obj.UseOutline = False
-        FeatureExtensions.set_default_property_values(obj, job)
 
     def areaOpShapes(self, obj):
         """areaOpShapes(obj) ... return shapes representing the solids to be removed."""
         Path.Log.track()
+        self.removalshapes = []
+
         # self.isDebug = True if Path.Log.getLevel(Path.Log.thisModule()) == 4 else False
         self.removalshapes = []
-        avoidFeatures = list()
         self.tol = self.job.GeometryTolerance.Value or 0.01
         solids = [base.Shape for base in self.model if base.Shape.Faces]
-
-        # Get extensions and identify faces to avoid
-        extensions = FeatureExtensions.getExtensions(obj)
-        for e in extensions:
-            if e.avoid:
-                avoidFeatures.append(e.feature)
 
         if obj.Base:
             Path.Log.debug("base items exist.  Processing...")
@@ -132,9 +124,6 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
             self.edges = []
             for base, subList in self.baseShapes(obj):
                 for sub in subList:
-                    if sub in avoidFeatures:
-                        # skip this sub shape
-                        continue
                     if "Edge" in sub and self.classifySubEdge(base, sub):
                         # edge added to list
                         continue
@@ -170,17 +159,12 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
             if obj.UseOutline and self.horiz:
                 self.horiz = [self.removeHoles(solids, face) for face in self.horiz]
 
-            # Add faces for extensions
-            # Note: Extension faces don't have a parent base object, so we append them directly
-            self.exts = []
-            for ext in extensions:
-                if not ext.avoid:
-                    wire = ext.getWire()
-                    if wire:
-                        faces = ext.getExtensionFaces(wire)
-                        for f in faces:
-                            self.horiz.append(f)
-                            self.exts.append(f)
+
+            # Expand selected regions with extensions
+            if obj.ExtensionOffset:
+                self.horiz = PathUtils.getExtendedFaces(
+                    self.horiz, obj.ExtensionOffset.Value, solids, tol=self.tol
+                )
 
             # check all faces and see if they are touching/overlapping and combine and simplify
             keepOrder = getattr(obj, "SortingMode", None) == "Manual"
@@ -359,11 +343,11 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
 
 def SetupProperties():
     setup = PathPocketBase.SetupProperties()  # Add properties from PocketBase module
-    setup.extend(FeatureExtensions.SetupProperties())  # Add properties from Extensions Feature
 
     # Add properties initialized here in PocketShape
     setup.append("UseOutline")
     setup.append("CloseOpenPaths")
+    setup.append("ExtensionOffset")
     return setup
 
 
