@@ -4073,7 +4073,7 @@ void Area::toPath(
         (plast.*setter)(retraction);
     }
     (p.*setter)(retraction);
-    addGCode(false, path, plast, p, "G0");
+    addGCode(true, path, plast, p, "G0");
 
 
     plast = p;
@@ -4109,7 +4109,7 @@ void Area::toPath(
             // raise to retraction height
             addG0(false, path, plast, plast, setter, retraction);
             // move to new location
-            addG0(false, path, plast, p, setter, retraction);
+            addG0(true, path, plast, p, setter, retraction);
             // lower to plunge height
             addG0(false, path, plast, p, setter, resume_height);
         }
