@@ -179,21 +179,28 @@ double Toolpath::getCycleTime(double hFeed, double vFeed, double hRapid, double 
     for (std::vector<Command*>::const_iterator it = vpcCommands.begin(); it != vpcCommands.end();
          ++it) {
         std::string name = (*it)->Name;
-        float feedrate = (*it)->getParam("F");
+        float commandFeed = (*it)->getParam("F");
 
         l = 0;
         verticalMove = false;
-        feedrate = hFeed;
+        float feedrate = hFeed;
         next = (*it)->getPlacement(last).getPosition();
 
-        if (last.z != next.z) {
+        if (std::fabs(last.z - next.z) > Base::Precision::Confusion()) {
             verticalMove = true;
-            feedrate = vFeed;
         }
 
         if ((name == "G0") || (name == "G00")) {
             // Rapid Move
             l += (next - last).Length();
+            if (commandFeed) {
+                if (verticalMove) {
+                    vRapid = commandFeed;
+                }
+                else {
+                    hRapid = commandFeed;
+                }
+            }
             feedrate = hRapid;
             if (verticalMove) {
                 feedrate = vRapid;
@@ -202,6 +209,18 @@ double Toolpath::getCycleTime(double hFeed, double vFeed, double hRapid, double 
         else if ((name == "G1") || (name == "G01")) {
             // Feed Move
             l += (next - last).Length();
+            if (commandFeed) {
+                if (verticalMove) {
+                    vFeed = commandFeed;
+                }
+                else {
+                    hFeed = commandFeed;
+                }
+            }
+            feedrate = hFeed;
+            if (verticalMove) {
+                feedrate = vFeed;
+            }
         }
         else if ((name == "G2") || (name == "G02") || (name == "G3") || (name == "G03")) {
             // Arc Move
@@ -209,6 +228,18 @@ double Toolpath::getCycleTime(double hFeed, double vFeed, double hRapid, double 
             double radius = center.Length();
             double angle = (next - last - center).GetAngle(-center);
             l += angle * radius;
+            if (commandFeed) {
+                if (verticalMove) {
+                    vFeed = commandFeed;
+                }
+                else {
+                    hFeed = commandFeed;
+                }
+            }
+            feedrate = hFeed;
+            if (verticalMove) {
+                feedrate = vFeed;
+            }
         }
 
         time += l / feedrate;
