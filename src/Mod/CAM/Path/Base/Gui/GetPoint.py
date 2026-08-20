@@ -101,6 +101,7 @@ class TaskPanel:
             self.escape = None
 
     def getPoint(self, whenDone, start=None):
+        print("getPoint", "whenDone", whenDone, "  start", start)
         """getPoint(whenDone, start=None) ... invoke Snapper and call whenDone when a point is entered or the user cancels the operation.
         whenDone(point, obj) is called either with a point and the object on which the point lies if the user set the point,
         or None and None if the user cancelled the operation.
@@ -161,6 +162,7 @@ class TaskPanel:
                     accept()
 
         def accept():
+            print("  accept")
             if start:
                 self.pointAccept()
             else:
@@ -193,6 +195,7 @@ class TaskPanel:
 
     def pointFinish(self, ok, cleanup=True):
         """pointFinish(ok, cleanup=True) ... internal function - do not call."""
+        print("    pointFinish", "ok", ok, "  cleanup", cleanup)
 
         if cleanup:
             self.removeGlobalCallbacks()
@@ -211,18 +214,22 @@ class TaskPanel:
             self.pointWhenDone(None, None)
 
     def pointDone(self):
+        print("  pointDone")
         """pointDone() ... internal function - do not call."""
         self.pointFinish(False)
 
     def pointReject(self):
+        print("  pointReject")
         """pointReject() ... internal function - do not call."""
         self.pointFinish(False)
 
     def pointAccept(self):
+        print("  pointAccept")
         """pointAccept() ... internal function - do not call."""
         self.pointFinish(True)
 
     def pointAcceptAndContinue(self):
+        print("  pointAcceptAndContinue")
         """pointAcceptAndContinue() ... internal function - do not call."""
         self.pointFinish(True, False)
 

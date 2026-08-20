@@ -26,10 +26,10 @@ import FreeCADGui
 import FreeCAD
 import Path.Op.Adaptive as PathAdaptive
 import Path.Op.Gui.Base as PathOpGui
-import Path.Op.Gui.FeatureExtension as PathFeatureExtensionsGui
 from PySide import QtCore
 
 import Path.Base.Gui.Util as PathGuiUtil
+from Path.Base.Gui.Util import QuantitySpinBox
 
 
 class TaskPanelOpPage(PathOpGui.TaskPanelPage):
@@ -45,11 +45,14 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         return form
 
     def initPage(self, obj):
-        self.form.HelixMaxPitch.setProperty("unit", obj.HelixMaxPitch.getUserPreferred()[2])
+        self.HelixMaxPitchSpinBox = QuantitySpinBox(self.form.HelixMaxPitch, obj, "HelixMaxPitch")
+        self.LiftDistanceSpinBox = QuantitySpinBox(self.form.LiftDistance, obj, "LiftDistance")
+        self.KeepToolDownRatioSpinBox = QuantitySpinBox(
+            self.form.KeepToolDownRatio, obj, "KeepToolDownRatio"
+        )
+        self.StockToLeaveSpinBox = QuantitySpinBox(self.form.StockToLeave, obj, "StockToLeave")
+        self.ExtensionSpinBox = QuantitySpinBox(self.form.extension, obj, "ExtensionOffset")
 
-        self.form.LiftDistance.setProperty("unit", obj.LiftDistance.getUserPreferred()[2])
-        self.form.KeepToolDownRatio.setProperty("unit", obj.KeepToolDownRatio.getUserPreferred()[2])
-        self.form.StockToLeave.setProperty("unit", obj.StockToLeave.getUserPreferred()[2])
         # Use user's preferred length unit
         self.form.stepOverDistance.setProperty(
             "unit", FreeCAD.Units.Quantity("1 mm").getUserPreferred()[2]
@@ -67,6 +70,13 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         if prop == "ToolController":
             self.updateStepOverDistance(obj)
 
+    def updateQuantitySpinBoxes(self, index=None):
+        self.HelixMaxPitchSpinBox.updateWidget()
+        self.LiftDistanceSpinBox.updateWidget()
+        self.KeepToolDownRatioSpinBox.updateWidget()
+        self.StockToLeaveSpinBox.updateWidget()
+        self.ExtensionSpinBox.updateWidget()
+
     def getSignalsForUpdate(self, obj):
         """getSignalsForUpdate(obj) ... return list of signals for updating obj"""
         signals = []
@@ -82,6 +92,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         signals.append(self.form.LiftDistance.valueChanged)
         signals.append(self.form.KeepToolDownRatio.valueChanged)
         signals.append(self.form.StockToLeave.valueChanged)
+        signals.append(self.form.extension.valueChanged)
         if hasattr(self.form.ForceInsideOut, "checkStateChanged"):  # Qt version >= 6.7.0
             signals.append(self.form.ForceInsideOut.checkStateChanged)
             signals.append(self.form.useOutline.checkStateChanged)
@@ -118,6 +129,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
                 self.getFields(obj)
 
     def setFields(self, obj):
+        self.updateQuantitySpinBoxes()
         self.selectInComboBox(obj.Side, self.form.Side)
         self.selectInComboBox(obj.OperationType, self.form.OperationType)
         self.form.stepOver.setValue(obj.StepOverPercent)
@@ -129,23 +141,12 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
             FreeCAD.Units.Quantity(obj.HelixMaxRampAngle, FreeCAD.Units.Angle).UserString
         )
 
-        self.form.HelixMaxPitch.setProperty("rawValue", obj.HelixMaxPitch.Value)
-
         self.form.HelixConeAngle.setText(
             FreeCAD.Units.Quantity(obj.HelixConeAngle, FreeCAD.Units.Angle).UserString
         )
 
         self.form.HelixMaxDiameterPercent.setValue(obj.HelixMaxDiameterPercent)
         self.form.HelixMinDiameterPercent.setValue(obj.HelixMinDiameterPercent)
-
-        self.form.LiftDistance.setProperty("rawValue", obj.LiftDistance.Value)
-
-        if hasattr(obj, "KeepToolDownRatio"):
-            self.form.KeepToolDownRatio.setProperty("rawValue", obj.KeepToolDownRatio.Value)
-            # self.form.KeepToolDownRatio.setValue(obj.KeepToolDownRatio)
-
-        if hasattr(obj, "StockToLeave"):
-            self.form.StockToLeave.setProperty("rawValue", obj.StockToLeave.Value)
 
         self.form.ForceInsideOut.setChecked(obj.ForceInsideOut)
         self.form.useOutline.setChecked(obj.UseOutline)
@@ -157,6 +158,12 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         obj.setEditorMode("Stopped", 2)  # hide this property
 
     def getFields(self, obj):
+        self.HelixMaxPitchSpinBox.updateProperty()
+        self.LiftDistanceSpinBox.updateProperty()
+        self.KeepToolDownRatioSpinBox.updateProperty()
+        self.StockToLeaveSpinBox.updateProperty()
+        self.ExtensionSpinBox.updateProperty()
+
         if obj.Side != str(self.form.Side.currentData()):
             obj.Side = str(self.form.Side.currentData())
 
@@ -174,15 +181,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
 
         obj.Tolerance = 1.0 * self.form.Tolerance.value() / 100.0
         PathGuiUtil.updateInputField(obj, "HelixMaxRampAngle", self.form.HelixMaxRampAngle)
-        PathGuiUtil.updateInputField(obj, "HelixMaxPitch", self.form.HelixMaxPitch)
         PathGuiUtil.updateInputField(obj, "HelixConeAngle", self.form.HelixConeAngle)
-        PathGuiUtil.updateInputField(obj, "LiftDistance", self.form.LiftDistance)
-
-        if hasattr(obj, "KeepToolDownRatio"):
-            PathGuiUtil.updateInputField(obj, "KeepToolDownRatio", self.form.KeepToolDownRatio)
-
-        if hasattr(obj, "StockToLeave"):
-            PathGuiUtil.updateInputField(obj, "StockToLeave", self.form.StockToLeave)
 
         obj.ForceInsideOut = self.form.ForceInsideOut.isChecked()
         obj.UseOutline = self.form.useOutline.isChecked()
@@ -197,10 +196,19 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         obj.setEditorMode("StopProcessing", 2)  # hide this property
         obj.setEditorMode("Stopped", 2)  # hide this property
 
-    def taskPanelBaseLocationPage(self, obj, features):
-        if not hasattr(self, "extensionsPanel"):
-            self.extensionsPanel = PathFeatureExtensionsGui.TaskPanelExtensionPage(obj, features)
-        return self.extensionsPanel
+    def registerSignalHandlers(self, obj):
+        self.form.KeepToolDownToggle.clicked.connect(self.keepToolDownRatioToggle)
+
+    def keepToolDownRatioToggle(self):
+        if self.obj.KeepToolDownRatio == 0:
+            self.obj.setExpression("KeepToolDownRatio", "OpToolDiameter")
+            self.KeepToolDownRatioSpinBox.refresh_expression_icon(True)
+        else:
+            self.obj.clearExpression("KeepToolDownRatio")
+            self.obj.KeepToolDownRatio = 0
+            self.KeepToolDownRatioSpinBox.refresh_expression_icon(False)
+        self.updateQuantitySpinBoxes()
+        self.setDirty()
 
 
 Command = PathOpGui.SetupOperation(

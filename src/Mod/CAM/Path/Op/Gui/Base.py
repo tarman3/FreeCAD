@@ -208,7 +208,10 @@ class ViewProvider(object):
     def setEdit(self, vobj=None, mode=0):
         """setEdit(vobj, mode=0) ... initiate editing of receivers model."""
         Path.Log.track()
-        if 0 == mode:
+        if mode == 1:
+            FreeCADGui.runCommand("Std_TransformManip")
+            return True
+        elif mode == 0:
             if vobj is None:
                 vobj = self.vobj
             # Mark as selected and update workplane visualization
@@ -246,12 +249,12 @@ class ViewProvider(object):
         if job:
             job.ViewObject.Proxy.resetEditVisibility(job)
 
-    def unsetEdit(self, arg1, arg2):
+    def unsetEdit(self, vobj, mode):
         # Mark as not selected and hide workplane visualization
         self._selected = False
         self.updateWorkplaneVisualization()
 
-        if self.panel:
+        if mode == 0 and self.panel:
             self.panel.reject(False)
 
     def dumps(self):
@@ -1563,7 +1566,16 @@ class TaskPanel(object):
             except Exception as ee:
                 Path.Log.debug("{}\n".format(ee))
             FreeCAD.ActiveDocument.commitTransaction()
-        self.cleanup(resetEdit)
+            # Object was removed; nothing meaningful to recompute, and the
+            # owning document still needs a refresh to drop view artifacts.
+            self.cleanup(resetEdit, recompute=True)
+        else:
+            # Edit-mode cancel: abortTransaction has already rolled back any
+            # property writes the user made, so re-running opExecute would
+            # just regenerate an unchanged toolpath.  Skip the recompute so
+            # long-running ops (Surface3D, Adaptive, etc.) don't pay for a
+            # cancel.
+            self.cleanup(resetEdit, recompute=False)
         return True
 
     def preCleanup(self):
@@ -1574,13 +1586,14 @@ class TaskPanel(object):
         self.obj.ViewObject.Proxy.clearTaskPanel()
         self.obj.ViewObject.Visibility = self.visibility
 
-    def cleanup(self, resetEdit):
+    def cleanup(self, resetEdit, recompute=True):
         """cleanup() ... implements common cleanup tasks."""
         self.panelCleanup()
         FreeCADGui.Control.closeDialog()
         if resetEdit:
             FreeCADGui.ActiveDocument.resetEdit()
-        FreeCAD.ActiveDocument.recompute()
+        if recompute:
+            FreeCAD.ActiveDocument.recompute()
 
     def pageDirtyChanged(self, page):
         """pageDirtyChanged(page) ... internal callback"""

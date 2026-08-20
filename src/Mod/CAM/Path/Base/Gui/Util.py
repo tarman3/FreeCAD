@@ -178,6 +178,9 @@ class QuantitySpinBox(QtCore.QObject):
             if attr is not None:
                 if hasattr(attr, "Value"):
                     self.widget.setProperty("unit", attr.getUserPreferred()[2])
+                elif obj.getTypeIdOfProperty(prop.split(".")[0]) == "App::PropertyVectorDistance":
+                    units = FreeCAD.Units.Quantity(1, FreeCAD.Units.Length).getUserPreferred()[2]
+                    self.widget.setProperty("unit", units)
                 self.widget.setProperty("binding", "%s.%s" % (obj.Name, prop))
                 self.valid = True
             else:
@@ -247,6 +250,16 @@ class QuantitySpinBox(QtCore.QObject):
             if prop == self.prop:
                 return exp
         return None
+
+    def refresh_expression_icon(self, has_expression):
+        line_edit = self.widget.lineEdit()
+        icon_label = line_edit.findChild(QtGui.QLabel)
+        if icon_label is None:
+            return
+        icon_height = QtGui.QFontMetrics(line_edit.font()).height()
+        name = "bound-expression.svg" if has_expression else "bound-expression-unset.svg"
+        pixmap = FreeCADGui.getIcon(":/icons/" + name).pixmap(icon_height, icon_height)
+        icon_label.setPixmap(pixmap)
 
 
 class PropertyComboBox(QtCore.QObject):

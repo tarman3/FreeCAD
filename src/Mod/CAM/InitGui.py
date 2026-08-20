@@ -160,6 +160,7 @@ class CAMWorkbench(Workbench):
             "CAM_DressupDragKnife",
             "CAM_DressupLeadInOut",
             "CAM_DressupMirror",
+            "CAM_DressupPlungeMilling",
             "CAM_DressupRampEntry",
             "CAM_DressupTag",
             "CAM_DressupZCorrect",
@@ -216,9 +217,8 @@ class CAMWorkbench(Workbench):
         )
         threedcmdgroup = threedopcmdlist
         if Path.Preferences.experimentalFeaturesEnabled():
-            prepcmdlist.append("CAM_PathShapeTC")
+            prepcmdlist.extend(["CAM_PathShape", "CAM_PathCompoundTC"])
             extracmdlist.extend(["CAM_Area", "CAM_Area_Workplane"])
-            twodopcmdlist.append("CAM_Slot")
 
         if Path.Preferences.advancedOCLFeaturesEnabled():
             try:
@@ -244,9 +244,10 @@ class CAMWorkbench(Workbench):
                 except ImportError:
                     import opencamlib as ocl
                 from Path.Op.Gui import Surface
+                from Path.Op.Gui import Surface3D
                 from Path.Op.Gui import Waterline
 
-                threedopcmdlist.extend(["CAM_Surface", "CAM_Waterline"])
+                threedopcmdlist.extend(["CAM_Surface", "CAM_Surface3D", "CAM_Waterline"])
 
                 if Path.Preferences.experimentalFeaturesEnabled():
                     from Path.Op.Gui import RotarySurface  # noqa: F401

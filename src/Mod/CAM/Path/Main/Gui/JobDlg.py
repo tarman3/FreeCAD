@@ -366,8 +366,18 @@ class JobCreate:
             return name
 
     def setupTemplate(self):
+        selectTemplate = Path.Preferences.defaultJobTemplate()
+        extraPath = None
+        if os.path.isdir(selectTemplate):
+            extraPath = selectTemplate
+        elif os.path.isfile(selectTemplate):
+            extraPath = os.path.dirname(selectTemplate)
+        searchPaths = Path.Preferences.searchPaths()
+        if extraPath and extraPath not in searchPaths:
+            searchPaths.append(extraPath)
+
         templateFiles = []
-        for path in Path.Preferences.searchPaths():
+        for path in searchPaths:
             cleanPaths = [
                 f.replace("\\", "/") for f in self.templateFilesIn(path)
             ]  # Standardize slashes used across os platforms

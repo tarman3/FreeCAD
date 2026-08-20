@@ -73,11 +73,12 @@ SET(PathPythonDressupGui_SRCS
     Path/Dressup/Gui/__init__.py
     Path/Dressup/Gui/Array.py
     Path/Dressup/Gui/AxisMap.py
+    Path/Dressup/Gui/Boundary.py
     Path/Dressup/Gui/DogboneII.py
     Path/Dressup/Gui/Dragknife.py
     Path/Dressup/Gui/LeadInOut.py
     Path/Dressup/Gui/Mirror.py
-    Path/Dressup/Gui/Boundary.py
+    Path/Dressup/Gui/PlungeMilling.py
     Path/Dressup/Gui/Preferences.py
     Path/Dressup/Gui/RampEntry.py
     Path/Dressup/Gui/Tags.py
@@ -380,13 +381,13 @@ SET(PathPythonOp_SRCS
     Path/Op/__init__.py
     Path/Op/Adaptive.py
     Path/Op/Area.py
+    Path/Op/Array.py
     Path/Op/Base.py
     Path/Op/CircularHoleBase.py
     Path/Op/Custom.py
     Path/Op/Deburr.py
     Path/Op/Engrave.py
     Path/Op/EngraveBase.py
-    Path/Op/FeatureExtension.py
     Path/Op/Drilling.py
     Path/Op/Helix.py
     Path/Op/MillFace.py
@@ -399,6 +400,7 @@ SET(PathPythonOp_SRCS
     Path/Op/RotarySurface.py
     Path/Op/Slot.py
     Path/Op/Surface.py
+    Path/Op/Surface3D.py
     Path/Op/SurfaceSupport.py
     Path/Op/Tapping.py
     Path/Op/ThreadMilling.py
@@ -419,11 +421,11 @@ SET(PathPythonOpGui_SRCS
     Path/Op/Gui/Deburr.py
     Path/Op/Gui/Drilling.py
     Path/Op/Gui/Engrave.py
-    Path/Op/Gui/FeatureExtension.py
     Path/Op/Gui/Helix.py
     Path/Op/Gui/MillFace.py
     Path/Op/Gui/MillFacing.py
-    Path/Op/Gui/PathShapeTC.py
+    Path/Op/Gui/PathShape.py
+    Path/Op/Gui/PathCompoundTC.py
     Path/Op/Gui/Pocket.py
     Path/Op/Gui/PocketBase.py
     Path/Op/Gui/PocketShape.py
@@ -435,6 +437,7 @@ SET(PathPythonOpGui_SRCS
     Path/Op/Gui/Slot.py
     Path/Op/Gui/Stop.py
     Path/Op/Gui/Surface.py
+    Path/Op/Gui/Surface3D.py
     Path/Op/Gui/Tapping.py
     Path/Op/Gui/ThreadMilling.py
     Path/Op/Gui/Vcarve.py
@@ -446,6 +449,7 @@ SET(PathScripts_SRCS
     PathScripts/PathUtilsGui.py
     PathScripts/PathPropertyBag.py
     PathScripts/PathPropertyBagGui.py
+    PathScripts/tsp.py
     PathScripts/__init__.py
 )
 
@@ -460,6 +464,7 @@ SET(PathPythonBaseGenerator_SRCS
     Path/Base/Generator/helix.py
     Path/Base/Generator/leadinout.py
     Path/Base/Generator/linking.py
+    Path/Base/Generator/plunge_milling.py
     Path/Base/Generator/ramp_entry.py
     Path/Base/Generator/rotary_dropcutter.py
     Path/Base/Generator/rotary_parallel.py
@@ -468,6 +473,13 @@ SET(PathPythonBaseGenerator_SRCS
     Path/Base/Generator/rotary_wrap.py
     Path/Base/Generator/rotation.py
     Path/Base/Generator/spiral.py
+    Path/Base/Generator/surface_common.py
+    Path/Base/Generator/surface_dropcutter.py
+    Path/Base/Generator/surface_mesh.py
+    Path/Base/Generator/surface_pattern.py
+    Path/Base/Generator/surface_postprocess.py
+    Path/Base/Generator/surface_waterline.py
+    Path/Base/Generator/surface_zlevel.py
     Path/Base/Generator/tapping.py
     Path/Base/Generator/threadmilling.py
     Path/Base/Generator/toolchange.py
@@ -578,6 +590,7 @@ SET(Tests_SRCS
     CAMTests/TestPathDrillGenerator.py
     CAMTests/TestDrillCycleExpander.py
     CAMTests/TestPathDrillable.py
+    CAMTests/TestPathEngrave.py
     CAMTests/TestPathFacingGenerator.py
     CAMTests/TestPathGeneratorDogboneII.py
     CAMTests/TestPathGeom.py
@@ -590,6 +603,7 @@ SET(Tests_SRCS
     CAMTests/TestPathLogNew.py
     CAMTests/TestPathOpDeburr.py
     CAMTests/TestPathOpUtil.py
+    CAMTests/TestPathPlungeMillingGenerator.py
     CAMTests/TestPostCore.py
     CAMTests/TestPostProcessor.py
     CAMTests/TestPostOutput.py
@@ -640,6 +654,15 @@ SET(Tests_SRCS
     CAMTests/TestPostMCodes.py
     CAMTests/TestSnapmakerPost.py
     CAMTests/TestPostToolProcessing.py
+    CAMTests/TestSurface3DOp.py
+    CAMTests/TestSurfaceCommonGenerator.py
+    CAMTests/TestSurfaceDropCutterGenerator.py
+    CAMTests/TestSurfaceGenerator.py
+    CAMTests/TestSurfaceMeshGenerator.py
+    CAMTests/TestSurfacePatternGenerator.py
+    CAMTests/TestSurfacePostprocessGenerator.py
+    CAMTests/TestSurfaceWaterlineGenerator.py
+    CAMTests/TestSurfaceZLevelGenerator.py
     CAMTests/TestSVGPost.py
     CAMTests/TestTSPSolver.py
     CAMTests/TestGcodeProcessingUtils.py

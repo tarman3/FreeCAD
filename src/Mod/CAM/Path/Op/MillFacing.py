@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # SPDX-FileCopyrightText: 2025 sliptonic sliptonic@freecad.org
 # SPDX-FileNotice: Part of the FreeCAD project.
@@ -28,18 +27,24 @@ __doc__ = "Class and implementation of Mill Facing operation."
 __contributors__ = ""
 
 import FreeCAD
-from PySide import QtCore
 import Path
 import Path.Op.Base as PathOp
 
-import Path.Base.Generator.spiral_facing as spiral_facing
-import Path.Base.Generator.facing_common as facing_common
-import Path.Base.Generator.zigzag_facing as zigzag_facing
-import Path.Base.Generator.directional_facing as directional_facing
-import Path.Base.Generator.bidirectional_facing as bidirectional_facing
-import Path.Base.Generator.linking as linking
-import PathScripts.PathUtils as PathUtils
-import Path.Base.FeedRate as FeedRate
+from Path.Base import FeedRate
+from Path.Base.Generator import (
+    bidirectional_facing,
+    directional_facing,
+    facing_common,
+    linking,
+    spiral,
+    spiral_facing,
+    zigzag_facing,
+)
+
+from PathScripts import PathUtils
+from PySide import QtCore
+
+import math
 
 # lazily loaded modules
 from lazy_loader.lazy_loader import LazyLoader
@@ -84,7 +89,7 @@ class ObjectMillFacing(PathOp.ObjectOp):
     def initOpProperties(self, obj, warn=False):
         """initOpProperties(obj) ... create operation specific properties"""
         Path.Log.track()
-        self.addNewProps = list()
+        self.addNewProps = []
 
         for prtyp, nm, grp, tt in self.opPropertyDefinitions():
             if not hasattr(obj, nm):
@@ -108,14 +113,21 @@ class ObjectMillFacing(PathOp.ObjectOp):
     def onChanged(self, obj, prop):
         """onChanged(obj, prop) ... Called when a property changes"""
         if prop == "StepOver" and hasattr(obj, "StepOver"):
-            # Validate StepOver is between 0 and 100 percent
-            if obj.StepOver < 0:
-                obj.StepOver = 0
+            # Validate StepOver is between 1 and 100 percent
+            if obj.StepOver < 1:
+                obj.StepOver = 1
             elif obj.StepOver > 100:
                 obj.StepOver = 100
 
+        if prop == "ClearingPattern":
+            self.opUpdateEditorModes(obj)
+
         if prop == "Active" and obj.ViewObject:
             obj.ViewObject.signalChangeIcon()
+
+    def opUpdateEditorModes(self, obj):
+        mode = 2 if obj.ClearingPattern in ("Circular", "Spiral") else 0
+        obj.setEditorMode("PassExtension", mode)
 
     def opPropertyDefinitions(self):
         """opPropertyDefinitions(obj) ... Store operation specific properties"""
@@ -217,13 +229,14 @@ class ObjectMillFacing(PathOp.ObjectOp):
                 (translate("CAM_MillFacing", "Bidirectional"), "Bidirectional"),
                 (translate("CAM_MillFacing", "Directional"), "Directional"),
                 (translate("CAM_MillFacing", "Spiral"), "Spiral"),
+                (translate("CAM_MillFacing", "Circular"), "Circular"),
             ],
         }
 
         if dataType == "raw":
             return enums
 
-        data = list()
+        data = []
         idx = 0 if dataType == "translated" else 1
 
         Path.Log.debug(enums)
@@ -283,6 +296,7 @@ class ObjectMillFacing(PathOp.ObjectOp):
             "tool_shape": None,
             "tool_diameter": None,
             "collision_clearance": obj.CollisionClearance.Value,
+            "split_plunge_height": obj.SafeHeight.Value,
         }
         if obj.CollisionAvoidanceStrategy == "Clearance Height":
             linkingArgs["heights_clearance"] = obj.ClearanceHeight.Value
@@ -326,18 +340,22 @@ class ObjectMillFacing(PathOp.ObjectOp):
             Path.Log.error("No stock found for facing operation")
             raise ValueError("No stock found for facing operation")
 
-        # offset with intersection joins
-        boundary_wires = [w.makeOffset2D(obj.StockExtension.Value, 2) for w in boundary_wires]
-
         # Convert boundary to a rectangular polygon aligned to the cut angle.
         # Stock faces may have curved edges (e.g. cylindrical stock) and all
         # facing strategies assume a rectangular boundary.
         cut_angle = getattr(obj.Angle, "Value", obj.Angle)
         boundary_wire = facing_common.get_angled_polygon(boundary_wires, cut_angle)
 
+        # offset with intersection joins
+        offsetVal = obj.StockExtension.Value
+        if offsetVal < 0:
+            offsetVal = max(offsetVal, -0.5 * min(e.Length for e in boundary_wire.Edges))
+        boundary_wire = boundary_wire.makeOffset2D(offsetVal, 2)
+
         # Determine milling direction
         milling_direction = "climb" if obj.CutMode == "Climb" else "conventional"
 
+        print("obj.CutMode", obj.CutMode, "  milling_direction", milling_direction)
         # Get operation parameters
         stepover_percent = obj.StepOver
         pass_extension = (
@@ -393,6 +411,25 @@ class ObjectMillFacing(PathOp.ObjectOp):
                     reverse=bool(getattr(obj, "Reverse", False)),
                     angle_degrees=getattr(obj.Angle, "Value", obj.Angle),
                 )
+            elif obj.ClearingPattern == "Circular":
+                Path.Log.debug("Generating circular spiral toolpath")
+                step = stepover_percent * tool_diameter / 100
+                radius = max(e.Length for e in boundary_wire.Edges) / 2 + tool_diameter / 2 - step
+                dir_angle_rad = math.radians(obj.Angle.Value) + (math.pi if obj.Reverse else 0)
+                args = {
+                    "center": boundary_wire.BoundBox.Center,
+                    "outer_radius": radius,
+                    "step": step,
+                    "inner_radius": step / 2,
+                    "direction": "CCW" if milling_direction == "conventional" else "CW",
+                    "startAt": "Outside",
+                    "dir_angle_rad": dir_angle_rad,
+                }
+
+                # create spiral
+                print("spiral args", args)
+                base_commands = spiral.generate(**args)
+                base_commands[0].Name = "G0"
             else:
                 Path.Log.error(f"Unknown clearing pattern: {obj.ClearingPattern}")
                 raise ValueError(f"Unknown clearing pattern: {obj.ClearingPattern}")
@@ -404,6 +441,9 @@ class ObjectMillFacing(PathOp.ObjectOp):
             Path.Log.error(f"Error generating toolpath: {e}")
             raise
 
+        print()
+        print()
+        print("base_commands", base_commands)
         # Be safe. Add first G0 to clearance height
         targetZ = obj.ClearanceHeight.Value
         self.commandlist.append(Path.Command("G0", {"Z": targetZ}))
@@ -432,6 +472,8 @@ class ObjectMillFacing(PathOp.ObjectOp):
                             first_move_idx = i
                             break
 
+                    # print("first_xy", first_xy)
+                    # print("first_move_idx", first_move_idx)
                     if first_xy is not None:
                         # 1) G0 to XY position at current height (ClearanceHeight from line 401)
                         pre1 = {"X": first_xy[0], "Y": first_xy[1]}
@@ -456,12 +498,14 @@ class ObjectMillFacing(PathOp.ObjectOp):
                             abs(pre3["Z"] - self.commandlist[-1].Parameters.get("Z", pre3["Z"] + 1))
                             > 1e-9
                         ):
-                            self.commandlist.append(Path.Command("G0", pre3))
+                            self.commandlist.append(Path.Command("G1", pre3))
 
                     # Now append the base commands, skipping the generator's initial positioning move
                     for i, cmd in enumerate(base_commands):
+                        # print(i, cmd)
                         # Skip the first move if it only positions at the start point
-                        if i == first_move_idx:
+                        if i <= first_move_idx:
+                            # print("  skip")
                             # If this first move has only XY(Z) to the start point, skip it because we preambled it
                             pass
                         else:
@@ -505,6 +549,8 @@ class ObjectMillFacing(PathOp.ObjectOp):
                             # Skip zero-length moves (but allow Z-only moves for plunges/retracts)
                             if self.commandlist:
                                 last_params = self.commandlist[-1].Parameters
+                                # print("  last_params", last_params)
+                                # print("  new_params", new_params)
                                 # Only skip if X and Y are identical (allow Z-only moves)
                                 if all(
                                     abs(new_params[k] - last_params.get(k, new_params[k] + 1))
@@ -586,28 +632,12 @@ class ObjectMillFacing(PathOp.ObjectOp):
                         # Build target position at cutting depth
                         first_position = FreeCAD.Vector(target_xy[0], target_xy[1], depth)
 
-                        # Generate collision-aware linking moves up to safe/clearance and back down
+                        # Append collision-aware linking moves
                         linkingArgs["start_position"] = last_position
                         linkingArgs["target_position"] = first_position
                         link_commands = linking.get_linking_moves(**linkingArgs)
-
-                        # Append linking moves, ensuring full XYZ continuity
-                        current = last_position
-                        for lc in link_commands:
-                            params = lc.Parameters
-                            X = params["X"]
-                            Y = params["Y"]
-                            Z = params["Z"]
-                            # Skip zero-length moves
-                            if not (
-                                abs(X - current.x) <= 1e-9
-                                and abs(Y - current.y) <= 1e-9
-                                and abs(Z - current.z) <= 1e-9
-                            ):
-                                self.commandlist.append(
-                                    Path.Command(lc.Name, {"X": X, "Y": Y, "Z": Z})
-                                )
-                                current = FreeCAD.Vector(X, Y, Z)
+                        self.commandlist.extend(link_commands)
+                        self.commandlist[-1].Name = "G1"
 
                         # Remove the entire initial G0 bundle (up, XY, down) from the copy
                         del copy_commands[bundle_start:bundle_end]

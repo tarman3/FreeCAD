@@ -210,6 +210,14 @@ def orientWire(w, forward=True):
     return wire
 
 
+def discretizeWire(wire, tolerance=0.01):
+    """discretizeWire(wire) ... discretize any non-line edges with lines."""
+    vertexes = wire.discretize(Deflection=tolerance)
+    line_edges = [Part.makeLine(vertexes[i], vertexes[i + 1]) for i in range(len(vertexes) - 1)]
+
+    return Part.Wire(line_edges)
+
+
 def approximateWire(wire, tolerance=0.01):
     """approximateWire approximates any non-line/arc edges with lines or arcs.
     Edges that are lines or circular arcs are kept as-is.
@@ -270,8 +278,8 @@ def offsetWire(wire, base, offset, forward, Side=None, tolerance=0.01):
     """
     Path.Log.track("offsetWire")
 
-    # Pre-process the wire: approximate any non-line/arc edges with arcs and lines
-    wire = approximateWire(wire, tolerance)
+    # discretize wire to fix too big value of connection tolerance
+    wire = discretizeWire(wire, tolerance)
 
     if len(wire.Edges) == 1:
         edge = wire.Edges[0]
@@ -417,15 +425,12 @@ def offsetWire(wire, base, offset, forward, Side=None, tolerance=0.01):
 
     # find edges that are not inside the shape
     common = base.common(owire)
-    insideEndpoints = [e.lastVertex().Point for e in common.Edges]
-    insideEndpoints.append(common.Edges[0].firstVertex().Point)
+    insideEndpoints = [v.Point for v in common.Vertexes]
 
     def isInside(edge):
-        p0 = edge.firstVertex().Point
-        p1 = edge.lastVertex().Point
-        for p in insideEndpoints:
-            if Path.Geom.pointsCoincide(p, p0, 0.01) or Path.Geom.pointsCoincide(p, p1, 0.01):
-                return True
+        candidates = (edge.firstVertex().Point, edge.lastVertex().Point)
+        if any(Path.Geom.pointsCoincide(p, c, 0.01) for p in insideEndpoints for c in candidates):
+            return True
         return False
 
     outside = [e for e in owire.Edges if not isInside(e)]
