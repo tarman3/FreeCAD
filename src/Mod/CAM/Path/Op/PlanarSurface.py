@@ -486,15 +486,6 @@ class ObjectSurface(PathOp.ObjectOp):
                     "Max length of keep tool down path compared to direct distance between points",
                 ),
             ),
-            (
-                "App::PropertyDistance",
-                "GapThreshold",
-                "Optimization",
-                QT_TRANSLATE_NOOP(
-                    "App::Property",
-                    "Collinear and co-radial artifact gaps that are smaller than this threshold are closed in the path.",
-                ),
-            ),
             # -- LeadInOut --
             (
                 "App::PropertyBool",
@@ -747,7 +738,6 @@ class ObjectSurface(PathOp.ObjectOp):
             "AvoidFacesOverlap": 0.0,
             "HandleMultipleFeatures": "Collectively",
             "ProfileEdges": "None",
-            "GapThreshold": 0.005,
             "AngularDeflection": 0.2,
             "LinearDeflection": 0.025,
             "MeshSimplification": 4,
@@ -852,7 +842,6 @@ class ObjectSurface(PathOp.ObjectOp):
         obj.setEditorMode("OptimizeLinearPaths", D)
         obj.setEditorMode("OptimizeMeshConversion", D)
         obj.setEditorMode("SampleInterval", D)
-        obj.setEditorMode("GapThreshold", D)
 
         # Apply Visibility to Common/Contextual Group (E-F)
         obj.setEditorMode("StepOver", E)
@@ -940,7 +929,8 @@ class ObjectSurface(PathOp.ObjectOp):
     def opApplyPropertyLimits(self, obj):
         """opApplyPropertyLimits(obj) ... Apply necessary limits to user input property values."""
         # Limit Keep Tool Down threshold to positive values
-        obj.KeepToolDownRatio = max(obj.KeepToolDownRatio, 0)
+        if obj.KeepToolDownRatio < 0:
+            obj.KeepToolDownRatio = 0
 
         # Limit linear deflection
         if obj.LinearDeflection.Value < 0.001:
@@ -979,8 +969,10 @@ class ObjectSurface(PathOp.ObjectOp):
             obj.CutPatternAngle = 0.0
 
         # Limit StepOver to natural number percentage
-        obj.StepOver = min(obj.StepOver, 100.0)
-        obj.StepOver = max(obj.StepOver, 1.0)
+        if obj.StepOver > 100:
+            obj.StepOver = 100
+        if obj.StepOver < 1:
+            obj.StepOver = 1
 
         # Limit AvoidLastX_Faces to zero and positive values
         if obj.AvoidLastX_Faces < 0:
@@ -995,32 +987,42 @@ class ObjectSurface(PathOp.ObjectOp):
             obj.AvoidFacesOverlap.Value = 0.0
 
         # Limit StockToLeave to positive values
-        obj.StockToLeave = max(obj.StockToLeave, 0)
+        if obj.StockToLeave < 0:
+            obj.StockToLeave = 0
 
         # Limit LeadFeed to natural number percentage
-        obj.LeadFeed = min(obj.LeadFeed, 100.0)
-        obj.LeadFeed = max(obj.LeadFeed, 1.0)
+        if obj.LeadFeed > 100:
+            obj.LeadFeed = 100
+        if obj.LeadFeed < 1:
+            obj.LeadFeed = 1
 
         # Limit LeadLiftDistance to positive values
-        obj.LeadLiftDistance = max(obj.LeadLiftDistance, 0)
+        if obj.LeadLiftDistance < 0:
+            obj.LeadLiftDistance = 0
 
         # Limit Adaptive Helix max ramp angle
         if obj.HelixMaxRampAngle < 0.0 or obj.HelixMaxRampAngle >= 90.0:
             obj.HelixMaxRampAngle = 3.0
 
         # Limit Adaptive Helix Max Diameter percentage
-        obj.HelixMaxDiameterPercent = min(obj.HelixMaxDiameterPercent, 100.0)
-        obj.HelixMaxDiameterPercent = max(obj.HelixMaxDiameterPercent, 10.0)
+        if obj.HelixMaxDiameterPercent > 100:
+            obj.HelixMaxDiameterPercent = 100
+        if obj.HelixMaxDiameterPercent < 10:
+            obj.HelixMaxDiameterPercent = 10.0
 
         # Limit Adaptive Lift Distance to positive values
-        obj.LiftDistance = max(obj.LiftDistance, 0)
+        if obj.LiftDistance < 0:
+            obj.LiftDistance = 0
 
         # Limit Adaptive Keep Tool Down Ratio to positive values
-        obj.KeepToolDownThreshold = max(obj.KeepToolDownThreshold, 0)
+        if obj.KeepToolDownThreshold < 0:
+            obj.KeepToolDownThreshold = 0
 
         # Limit Volumetric Feed Percent
-        obj.VolumetricFeedPercent = min(obj.VolumetricFeedPercent, 100.0)
-        obj.VolumetricFeedPercent = max(obj.VolumetricFeedPercent, 0.0)
+        if obj.VolumetricFeedPercent > 100:
+            obj.VolumetricFeedPercent = 100
+        if obj.VolumetricFeedPercent < 0:
+            obj.VolumetricFeedPercent = 0
 
     def _rotatedShape(self, shape):
         """Return *shape* in the operation's working (Z-up) frame.
@@ -1052,15 +1054,14 @@ class ObjectSurface(PathOp.ObjectOp):
                         Path.Log.error(e)
             if zmin != float("inf"):
                 obj.OpFinalDepth = zmin
-        elif self.job:
-            if hasattr(obj, "BoundBox"):
-                if obj.BoundBox == "BaseBoundBox":
-                    models = getattr(self, "model", None) or self.job.Model.Group
-                    zmin = min(self._rotatedShape(M.Shape).BoundBox.ZMin for M in models)
-                    obj.OpFinalDepth = zmin
-                if obj.BoundBox == "Stock":
-                    stock = getattr(self, "stock", None) or self.job.Stock
-                    obj.OpFinalDepth = self._rotatedShape(stock.Shape).BoundBox.ZMin
+        elif self.job and hasattr(obj, "BoundBox"):
+            if obj.BoundBox == "BaseBoundBox":
+                models = getattr(self, "model", None) or self.job.Model.Group
+                zmin = min(self._rotatedShape(M.Shape).BoundBox.ZMin for M in models)
+                obj.OpFinalDepth = zmin
+            if obj.BoundBox == "Stock":
+                stock = getattr(self, "stock", None) or self.job.Stock
+                obj.OpFinalDepth = self._rotatedShape(stock.Shape).BoundBox.ZMin
 
     # ---- Strategy execution methods ----
 
@@ -1070,31 +1071,17 @@ class ObjectSurface(PathOp.ObjectOp):
         tool = tc.Tool
 
         tool_type = None
-        diameter = 0.0
-        corner_radius = 0.0
-        flat_radius = 0.0
-        edge_height = 0.0
-        edge_angle = 0.0
-        length_offset = 0.0
-
         if hasattr(tool, "ShapeType"):
             tool_type = tool.ShapeType.lower()
         elif hasattr(tool, "ShapeName"):
             tool_type = tool.ShapeName.lower()
-
-        if hasattr(tool, "Diameter"):
-            diameter = float(tool.Diameter)
-        if hasattr(tool, "FlatRadius"):
-            flat_radius = float(tool.FlatRadius)
-        if hasattr(tool, "CornerRadius"):
-            corner_radius = float(tool.CornerRadius)
+        diameter = getattr(tool, "Diameter", 0.0)
+        flat_radius = getattr(tool, "FlatRadius", 0.0)
+        if corner_radius := getattr(tool, "CornerRadius", 0.0):
             flat_radius = (diameter / 2.0) - corner_radius
-        if hasattr(tool, "CuttingEdgeHeight"):
-            edge_height = float(tool.CuttingEdgeHeight)
-        if hasattr(tool, "CuttingEdgeAngle"):
-            edge_angle = float(tool.CuttingEdgeAngle)
-        if hasattr(tool, "LengthOffset"):
-            length_offset = float(tool.LengthOffset)
+        edge_height = getattr(tool, "CuttingEdgeHeight", 0.0)
+        edge_angle = getattr(tool, "CuttingEdgeAngle", 0.0)
+        length_offset = getattr(tool, "LengthOffset", 0.0)
 
         Path.Log.debug(
             f"Surface tool: type={tool_type}, diameter={diameter}, edge_height={edge_height}, "
@@ -1388,9 +1375,8 @@ class ObjectSurface(PathOp.ObjectOp):
         step_down = obj.StepDown.Value
         cut_climb = obj.CutMode == "Climb"
 
-        adaptive_threshold = (
-            0.25  # If SampleInterval is already this fine, standard dropcutter is faster.
-        )
+        # If SampleInterval is already this fine, standard dropcutter is faster
+        adaptive_threshold = 0.25
         is_truly_adaptive = is_adaptive and sample_interval >= adaptive_threshold
 
         if is_adaptive and not is_truly_adaptive:
@@ -1416,14 +1402,13 @@ class ObjectSurface(PathOp.ObjectOp):
 
         # Filter collinear points if optimization is enabled
         if obj.OptimizeLinearPaths:
-            tolerance = obj.GapThreshold.Value if hasattr(obj.GapThreshold, "Value") else 0.005
             for zh in wl_data:
                 filter_loop = []
                 for loop in wl_data[zh]:
                     # Filter out samll fragments
                     if len(loop) < 3:
                         continue
-                    filter_loop.append(surface_postprocess.filter_cl_points(loop, tolerance))
+                    filter_loop.append(surface_postprocess.filter_cl_points(loop, 0.005))
                 wl_data[zh] = filter_loop
 
         cmds = surface_waterline.waterline_to_gcode(
@@ -1611,8 +1596,7 @@ class ObjectSurface(PathOp.ObjectOp):
         startTime = time.time()
 
         # Universal Setup
-        JOB = PathUtils.findParentJob(obj)
-        if JOB is None:
+        if not (JOB := PathUtils.findParentJob(obj)):
             Path.Log.error(translate("CAM_PlanarSurface", "No JOB"))
             return
 
@@ -1827,19 +1811,10 @@ class ObjectSurface(PathOp.ObjectOp):
                 Path.Command(f"N (Sample interval: {obj.SampleInterval.Value!s})", {})
             )
         self.commandlist.append(Path.Command(f"N (Step over %: {obj.StepOver!s})", {}))
-        self.commandlist.append(
-            Path.Command("G0", {"Z": obj.ClearanceHeight.Value, "F": self.vertRapid})
-        )
+        self.commandlist.append(Path.Command("G0", {"Z": obj.ClearanceHeight.Value}))
         if obj.UseStartPoint:
             self.commandlist.append(
-                Path.Command(
-                    "G0",
-                    {
-                        "X": obj.StartPoint.x,
-                        "Y": obj.StartPoint.y,
-                        "F": self.horizRapid,
-                    },
-                )
+                Path.Command("G0", {"X": obj.StartPoint.x, "Y": obj.StartPoint.y})
             )
 
         # Dispatch to strategy
@@ -1854,13 +1829,8 @@ class ObjectSurface(PathOp.ObjectOp):
             cmds = self._executeZLevelHybrid(obj, JOB, model_shape, bb_face, tool_params)
         self.commandlist.extend(cmds)
 
-        elapsed = time.time() - startTime
-        hours, remainder = divmod(elapsed, 3600)
-        minutes, seconds = divmod(remainder, 60)
-
-        Path.Log.info(
-            f"Surface operation completed in {hours:02.0f}h:{minutes:02.0f}m:{seconds:05.2f}s"
-        )
+        elapsed = time.strftime("%Hh:%Mm:%Ss", time.gmtime(time.time() - startTime))
+        Path.Log.info(f"Surface operation completed in {elapsed}")
 
 
 def Create(name, obj=None, parentJob=None):
@@ -1905,7 +1875,6 @@ def SetupProperties():
     setup.append("AvoidFacesOverlap")
     setup.append("KeepToolDown")
     setup.append("KeepToolDownRatio")
-    setup.append("GapThreshold")
     setup.append("UseStartPoint")
     setup.append("StartPoint")
     setup.append("LeadInOut")
