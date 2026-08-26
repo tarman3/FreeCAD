@@ -1,7 +1,18 @@
-> [!IMPORTANT]
-> Bleeding edge FreeCAD development builds for testing bugfixes, regressions, and recently implemented features. Do not use in a production environment.
+<div align="center">
+  <img src="../../blob/CAM3/src/Gui/Icons/freecadaboutdev.png" alt="FreeCAD CAM3">
+</div>
 
-**Changes since last weekly:** <!--DIFF_LINK-->
+> [!IMPORTANT]
+> Bleeding edge FreeCAD development builds for testing bugfixes, regressions, and recently implemented features.
+> Do not use in a production environment.
+
+> [!CAUTION]
+> Included experimental changes in **CAM** workbench which was not merged to upstream.
+> Actual list of changes in [Pull requests](https://github.com/FreeCAD/FreeCAD/pulls/tarman3). More information in [EN](https://forum.freecad.org/viewtopic.php?t=98993) and [RU](https://forum.freecad.org/viewtopic.php?t=98977) forum.
+
+> [!WARNING]
+> Properties can be renamed, removed or added new, without any care about compatibility between builds.
+> Create backup of `FCStd` file before open, otherwise you may have a problem to open this file again in regular FreeCAD release.
 
 ### How-to use
 

@@ -24,6 +24,8 @@ import FreeCAD
 import Path
 import math
 
+from Path.Base.MachineState import MachineState
+
 from FreeCAD import Vector
 import Constants
 
@@ -113,6 +115,12 @@ def isStrictlyGreater(float1, float2, error=Tolerance):
     return float1 > float2 and not isRoughly(float1, float2, error)
 
 
+def isStrictlyLess(float1, float2, error=Tolerance):
+    """isStrictlyLess(float1, float2, [error=Tolerance])
+    Returns true if float1 is less than float2 by more than a given error."""
+    return float1 < float2 and not isRoughly(float1, float2, error)
+
+
 def pointsCoincide(p1, p2, error=Tolerance):
     """pointsCoincide(p1, p2, [error=Tolerance])
     Return True if two points are roughly identical (see also isRoughly)."""
@@ -128,6 +136,27 @@ def edgesMatch(e0, e1, error=Tolerance):
         pointsCoincide(e0.Vertexes[i].Point, e1.Vertexes[i].Point, error)
         for i in range(len(e0.Vertexes))
     )
+
+
+def edgesSimilar(e0, e1, error=Tolerance):
+    """edgesSimilar(e0, e1, [error=Tolerance])
+    The same as edgesMatch(), but edges can be flipped."""
+    if e0.hashCode() == e1.hashCode():
+        # edges absolutely identical
+        return True
+    if type(e0.Curve) is not type(e1.Curve) or len(e0.Vertexes) != len(e1.Vertexes):
+        return False
+    if not isRoughly(e0.Length, e1.Length, error):
+        return False
+    e0p1 = e0.Vertexes[0].Point
+    e0p2 = e0.Vertexes[-1].Point
+    e1p1 = e1.Vertexes[0].Point
+    e1p2 = e1.Vertexes[-1].Point
+    for i in range(2):
+        if pointsCoincide(e0p1, e1p1, error) and pointsCoincide(e0p2, e1p2, error):
+            return True
+        e1p1, e1p2 = e1p2, e1p1
+    return False
 
 
 def edgeConnectsTo(edge, vector, error=Tolerance):
@@ -347,6 +376,12 @@ def cmdsForEdge(edge, flip=False, approximation=False, hSpeed=0, vSpeed=0, tol=0
     if not edges:
         # use original edge if list is empty
         edges = [edge]
+
+    # split arcs (circles) with angle greater than pi
+    for i in reversed(range(len(edges))):
+        e = edges[i]
+        if isinstance(e.Curve, Part.Circle) and abs(e.LastParameter - e.FirstParameter) > math.pi:
+            edges[i : i + 1] = splitArcAt(e, e.valueAt((e.FirstParameter + e.LastParameter) / 2))
 
     if flip:
         edges.reverse()
@@ -900,13 +935,12 @@ def combineHorizontalFaces(faces, keepOrder=False):
     """
     horizontal = []
     offset = 10.0
+    offsetZ = 5.0
     topFace = None
     innerFaces = []
 
-    # Verify all incoming faces are at Z=0.0
     for f in faces:
-        if f.BoundBox.ZMin != 0.0:
-            f.translate(FreeCAD.Vector(0.0, 0.0, 0.0 - f.BoundBox.ZMin))
+        f.translate(FreeCAD.Vector(0.0, 0.0, -offsetZ - f.BoundBox.ZMin))
 
     # Make offset compound boundbox solid and cut incoming face extrusions from it
     allFaces = Part.makeCompound(faces)
@@ -919,33 +953,16 @@ def combineHorizontalFaces(faces, keepOrder=False):
         return horizontal
 
     afbb = allFaces.BoundBox
-    bboxFace = makeBoundBoxFace(afbb, offset, -5.0)
-    bboxSolid = bboxFace.extrude(FreeCAD.Vector(0.0, 0.0, 10.0))
-    extrudedFaces = []
-    for f in faces:
-        extrudedFaces.append(f.extrude(FreeCAD.Vector(0.0, 0.0, 6.0)))
-
-    # Fuse all extruded faces together
-    allFacesSolid = extrudedFaces.pop()
-    for i in range(len(extrudedFaces)):
-        temp = extrudedFaces.pop().fuse(allFacesSolid)
-        allFacesSolid = temp
-    cut = bboxSolid.cut(allFacesSolid)
-
-    # Debug
-    # Part.show(cut)
-    # FreeCAD.ActiveDocument.ActiveObject.Label = "cut"
+    bboxFace = makeBoundBoxFace(afbb, offset, -2 * offsetZ)
+    bboxSolid = bboxFace.extrude(FreeCAD.Vector(0.0, 0.0, 2 * offsetZ))
+    extrudedFaces = [f.extrude(FreeCAD.Vector(0, 0, offsetZ + 1)) for f in faces]
+    cut = bboxSolid.cut(extrudedFaces)
 
     # Identify top face and floating inner faces that are the holes in incoming faces
     for f in cut.Faces:
         fbb = f.BoundBox
-        if isRoughly(fbb.ZMin, 5.0) and isRoughly(fbb.ZMax, 5.0):
-            if (
-                isRoughly(afbb.XMin - offset, fbb.XMin)
-                and isRoughly(afbb.XMax + offset, fbb.XMax)
-                and isRoughly(afbb.YMin - offset, fbb.YMin)
-                and isRoughly(afbb.YMax + offset, fbb.YMax)
-            ):
+        if isRoughly(fbb.ZMin, 0) and isRoughly(fbb.ZMax, 0):
+            if isRoughly(afbb.XMin - offset, fbb.XMin):
                 topFace = f
             else:
                 innerFaces.append(f)
@@ -953,24 +970,11 @@ def combineHorizontalFaces(faces, keepOrder=False):
     if not topFace:
         return horizontal
 
-    outer = [Part.Face(w) for w in topFace.Wires[1:] if w.isClosed()]
-
-    if outer:
-        for f in outer:
-            f.translate(FreeCAD.Vector(0.0, 0.0, 0.0 - f.BoundBox.ZMin))
-
+    if outerFaces := [Part.Face(w) for w in topFace.Wires[1:] if w.isClosed()]:
         if innerFaces:
-            # inner = [Part.Face(f.Wire1) for f in innerFaces]
-            inner = innerFaces
-
-            for f in inner:
-                f.translate(FreeCAD.Vector(0.0, 0.0, 0.0 - f.BoundBox.ZMin))
-            innerComp = Part.makeCompound(inner)
-            outerComp = Part.makeCompound(outer)
-            cut = outerComp.cut(innerComp)
-            horizontal = cut.Faces
+            horizontal = Part.makeCompound(outerFaces).cut(innerFaces).Faces
         else:
-            horizontal = outer
+            horizontal = outerFaces
 
     # restore order
     if keepOrder and len(horizontal) > 1:
@@ -989,3 +993,68 @@ def combineHorizontalFaces(faces, keepOrder=False):
             Path.Log.info(translate("PathGeom", "Can not restore order of faces."))
 
     return horizontal
+
+
+def fuseHorizontalFaces(faces, z=0):
+    """fuseHorizontalFaces(faces) ... fuse faces and remove splitters
+    Faces translated to specified height, default 0
+    Not work with bspline and bezier"""
+    for f in faces:
+        f.translate(FreeCAD.Vector(0, 0, z - f.BoundBox.ZMin))
+
+    if len(faces) < 2:
+        return faces
+
+    fusedFaces = []
+    compounds = combineConnectedShapes(faces)
+    for comp in compounds:
+        if len(comp.Faces) > 1:
+            fuse = comp.Faces[0].fuse(comp.Faces[1:])
+            fusedFaces.extend(fuse.removeSplitter().Faces)
+        else:
+            fusedFaces.extend(comp.Faces)
+
+    return fusedFaces
+
+
+def filterStraightArcs(cmds, deflection=None):
+    """Replace G2/G3 commands with curvature less than 'deflection' by G1 moves."""
+    if not deflection:
+        prefGrp = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/CAM")
+        deflection = prefGrp.GetFloat("LibAreaCurveAccuracy", 0.01)
+
+    machine = MachineState()
+
+    for i in range(len(cmds)):
+        if cmds[i].Name in CmdMoveArc:
+            p3 = None
+            position = machine.getPosition()
+            try:
+                edge = edgeForCmd(cmds[i], position)
+            except Exception:
+                # error can be related with precision, so use G1
+                edge = None
+                p3 = position
+                p3.x = cmds[i].x if cmds[i].x is not None else p3.x
+                p3.y = cmds[i].y if cmds[i].y is not None else p3.y
+                p3.z = cmds[i].z if cmds[i].z is not None else p3.z
+
+            if edge and not edge.isClosed():
+                firstParameter, lastParameter = edge.FirstParameter, edge.LastParameter
+                p1 = edge.valueAt(firstParameter)
+                p2 = edge.valueAt((firstParameter + lastParameter) / 2)
+                p3 = edge.valueAt(lastParameter)
+                d = p2.distanceToPoint(p1 + (p3 - p1) / 2)
+                if d > deflection:
+                    p3 = None
+
+            if p3:
+                print(round(d, 5), " ", cmds[i])
+                params = {"X": p3.x, "Y": p3.y, "Z": p3.z}
+                if cmds[i].F:
+                    params.update({"F": cmds[i].F})
+                cmds[i] = Path.Command("G1", params)
+
+        machine.addCommand(cmds[i])
+
+    return cmds

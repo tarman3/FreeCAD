@@ -55,7 +55,12 @@ class ObjectProfile(PathAreaOp.ObjectOp):
 
     def areaOpFeatures(self, obj):
         """areaOpFeatures(obj) ... returns operation-specific features"""
-        return PathOp.FeatureBaseFaces | PathOp.FeatureBaseEdges | PathOp.FeatureBaseModels
+        return (
+            PathOp.FeatureBaseFaces
+            | PathOp.FeatureBaseEdges
+            | PathOp.FeatureBaseModels
+            | PathOp.FeatureExtension
+        )
 
     def initAreaOp(self, obj):
         """initAreaOp(obj) ... creates all profile specific properties."""
@@ -203,6 +208,61 @@ class ObjectProfile(PathAreaOp.ObjectOp):
                     "\nManual: uses order of shapes selection",
                 ),
             ),
+            (
+                "App::PropertyLength",
+                "FinishingOffset",
+                "Profile",
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Distance between roughing and finishing passes",
+                ),
+            ),
+            (
+                "App::PropertyBool",
+                "FinishingOneStepDown",
+                "Profile",
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Finish pass will processing with one step down at final depth",
+                ),
+            ),
+            (
+                "App::PropertyEnumeration",
+                "StartAt",
+                "Profile",
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Start multiple profile from edge or out of edge",
+                ),
+            ),
+            (
+                "App::PropertyBool",
+                "HelixRamp",
+                "Profile",
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Create helix ramp for closed path\nHelix pitch limits by 'Step Down'",
+                ),
+            ),
+            (
+                "App::PropertyIntegerConstraint",
+                "FinishingPasses",
+                "Profile",
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Adds an additional finishing pass "
+                    "that clears the stock left over from tool deflection",
+                ),
+            ),
+            (
+                "App::PropertyBool",
+                "OpenWireNG",
+                "Profile",
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Experimental method for open wire",
+                ),
+            ),
         ]
 
     @classmethod
@@ -234,6 +294,10 @@ class ObjectProfile(PathAreaOp.ObjectOp):
                 (translate("PathProfile", "Automatic"), "Automatic"),
                 (translate("PathProfile", "Manual"), "Manual"),
             ],
+            "StartAt": [
+                (translate("PathProfile", "OutOfEdge"), "OutOfEdge"),
+                (translate("PathProfile", "Edge"), "Edge"),
+            ],
         }
 
         if dataType == "raw":
@@ -264,20 +328,17 @@ class ObjectProfile(PathAreaOp.ObjectOp):
             "processHoles": False,
             "processPerimeter": True,
             "Stepover": 0,
-            "NumPasses": (1, 1, 99999, 1),
+            "NumPasses": (1, 1, 999999, 1),
+            "FinishingPasses": (0, 0, 999999, 1),
         }
 
     def areaOpApplyPropertyDefaults(self, obj, job, propList):
         # Set standard property defaults
         PROP_DFLTS = self.areaOpPropertyDefaults(obj, job)
-        for n in PROP_DFLTS:
-            if n in propList:
-                prop = getattr(obj, n)
-                val = PROP_DFLTS[n]
-                if hasattr(prop, "Value") and isinstance(val, (int, float)):
-                    setattr(prop, "Value", val)
-                else:
-                    setattr(obj, n, val)
+        for name in PROP_DFLTS:
+            if name in propList:
+                val = PROP_DFLTS[name]
+                setattr(obj, name, val)
 
     def areaOpSetDefaultValues(self, obj, job):
         if self.addNewProps and self.addNewProps.__len__() > 0:
@@ -301,6 +362,7 @@ class ObjectProfile(PathAreaOp.ObjectOp):
         )
         sortingMode = 0 if obj.HandleMultipleFeatures == "Individually" else 2
         multiPassMode = 0 if obj.NumPasses > 1 else 2
+        finishingMode = 0 if obj.FinishingPasses else 2
 
         obj.setEditorMode("Stepover", multiPassMode)
         obj.setEditorMode("Side", side)
@@ -310,6 +372,10 @@ class ObjectProfile(PathAreaOp.ObjectOp):
         obj.setEditorMode("processPerimeter", fc)
         obj.setEditorMode("UseLongestEdge", useLongestEdgeMode)
         obj.setEditorMode("SortingMode", sortingMode)
+        obj.setEditorMode("RetractThreshold", multiPassMode)
+        obj.setEditorMode("StartAt", multiPassMode)
+        obj.setEditorMode("FinishingOffset", finishingMode)
+        obj.setEditorMode("FinishingOneStepDown", finishingMode)
 
     def _getOperationType(self, obj):
         if len(obj.Base) == 0:
@@ -342,33 +408,33 @@ class ObjectProfile(PathAreaOp.ObjectOp):
         params["Coplanar"] = 0
         params["SectionCount"] = -1
 
-        offset = obj.OffsetExtra.Value  # 0.0
-        num_passes = max(1, obj.NumPasses)
+        num_passes_rough = max(1, obj.NumPasses)
+        num_passes_finish = obj.FinishingPasses
         stepover = obj.Stepover.Value
-        if num_passes > 1 and stepover == 0:
-            # This check is important because C++ code has a default value for stepover
-            # if it's 0 and extra passes are requested
-            num_passes = 1
-            Path.Log.warning(
-                "Multipass profile requires a non-zero stepover. Reducing to a single pass."
-            )
-
+        offset_rough = obj.OffsetExtra.Value
+        offset_finish = obj.FinishingOffset.Value
+        if num_passes_finish:
+            offset_rough += offset_finish
         if obj.UseComp:
-            offset = self.radius + obj.OffsetExtra.Value
+            offset_rough += self.radius
         if obj.Side == "Inside":
-            offset = 0 - offset
+            offset_rough = -offset_rough
             stepover = -stepover
+            offset_finish = -offset_finish
         if isHole:
-            offset = 0 - offset
+            offset_rough = -offset_rough
             stepover = -stepover
+            offset_finish = -offset_finish
 
-        # Modify offset and stepover to do passes from most-offset to least
-        offset += stepover * (num_passes - 1)
-        stepover = -stepover
+        # Create list of offsets for multiple passes
+        offsets = [offset_rough + i * stepover for i in range(num_passes_rough)]
+        if obj.StartAt != "Edge":
+            offsets.reverse()
+        offsets.extend([offset_rough - offset_finish] * num_passes_finish)
 
-        params["Offset"] = offset
-        params["ExtraPass"] = num_passes - 1
-        params["Stepover"] = stepover
+        params["Offset"] = offsets
+        params["ExtraPass"] = 0
+        params["Stepover"] = 0
 
         if obj.SplitArcs:
             params["Explode"] = True
@@ -391,10 +457,6 @@ class ObjectProfile(PathAreaOp.ObjectOp):
             params["orientation"] = 0
         else:
             params["orientation"] = 1
-
-        if obj.NumPasses > 1:
-            # Disable path sorting to ensure that offsets appear in order, from farthest offset to closest, on all layers
-            params["sort_mode"] = 0
 
         return params
 
@@ -508,7 +570,13 @@ class ObjectProfile(PathAreaOp.ObjectOp):
                     else:
                         vertFaces.append(sub)
 
-        for face in horFaces:
+        if obj.ExtensionOffset:
+            horFaces = PathUtils.getExtendedFaces(
+                horFaces, obj.ExtensionOffset.Value, self.solids, tol=self.tol
+            )
+
+        # for face in Path.Geom.combineHorizontalFaces(horFaces):
+        for face in Path.Geom.fuseHorizontalFaces(horFaces):
             shapeTups.extend(self._processHorFace(obj, face))
 
         for vertCon in Path.Geom.combineConnectedShapes(vertFaces):
@@ -523,14 +591,23 @@ class ObjectProfile(PathAreaOp.ObjectOp):
                     bEs = [e for e in face.Edges if Path.Geom.isRoughly(e.BoundBox.ZMax, fzMin)]
                     edgeslist.extend(bEs)
 
-        for se in Part.getSortedClusters(edgeslist):
+        flattenEdges = []
+        for edge in edgeslist:
+            if flattened := self._flattenWire(obj, edge, obj.FinalDepth.Value):
+                _, flatWire = flattened
+                flattenEdges.extend(flatWire.Edges)
+
+        for se in Part.getSortedClusters(flattenEdges):
             wire = Part.Wire(Part.__sortEdges__(se))
             if wire.isClosed():
                 shapeTups.extend(self._processClosedWire(obj, None, wire))
             else:
                 for base in bases:
                     if any(base.Shape.isInside(e.Vertexes[0].Point, self.tol, True) for e in se):
-                        shapeTups.extend(self._processOpenWire(obj, base, wire, se))
+                        if obj.OpenWireNG:
+                            shapeTups.extend(self._processOpenWireNG(obj, base, wire))
+                        else:
+                            shapeTups.extend(self._processOpenWire(obj, base, wire, se))
                         break
                 else:
                     Path.Log.warning("Skipped open wire without base solid model")
@@ -572,9 +649,63 @@ class ObjectProfile(PathAreaOp.ObjectOp):
         _, flatWire = self._flattenWire(obj, wire, obj.FinalDepth.Value)
         if f := flatWire.Wires[0]:
             shape = Part.Face(f)
+            if obj.ExtensionOffset:
+                ext = PathUtils.getExtendedFaces(
+                    shape, obj.ExtensionOffset.Value, self.solids, tol=self.tol
+                )
+                shape = Part.Compound(ext)
             if shapeEnv := PathUtils.getEnvelope(shape, depthparams=self.depthparams):
                 shapeTups.append((shapeEnv, False, "pathProfile"))
         if not shapeTups:
+            Path.Log.error(self.inaccessibleMsg)
+
+        return shapeTups
+
+    def _processOpenWireNG(self, obj, base, wire):
+        """_processOpenWire(obj, wire) ... returns wire which is offset of the open wire"""
+        solids = Part.Compound(self.solids)
+        cutting_plane = Path.Geom.makeBoundBoxFace(solids.BoundBox, 10)
+        diff_z = wire.BoundBox.ZMax - cutting_plane.BoundBox.ZMax
+        cutting_plane.translate(FreeCAD.Vector(0, 0, diff_z))
+        section = solids.section(cutting_plane)
+
+        shapeTups = []
+        goodWires = []
+        passOffsets = self.areaOpAreaParams(obj, False)["Offset"]
+        index = obj.Side == "Inside"
+        for po in passOffsets:
+            owires = Path.Op.Util.offsetWire(wire, self.solids, po, tolerance=self.tol)[index]
+            temp = owires[:]
+            added = False
+            while temp:
+                owire = temp.pop()
+                if not section.Edges:
+                    goodWires.append(owire)
+                    continue
+
+                distData = owire.distToShape(section)
+                dist = distData[0]
+                if dist > self.radius or Path.Geom.isRoughly(dist, self.radius, 2 * self.tol):
+                    goodWires.append(owire)
+                    added = True
+                else:
+                    point = distData[1][0][1]  # nearest point on wire which intersects with tool
+                    circle = Part.makeCircle(self.radius, point)
+                    face = Part.makeFace(circle)
+                    face.translate(FreeCAD.Vector(0, 0, -1))
+                    eface = face.extrude(FreeCAD.Vector(0, 0, 2))
+                    cut = owire.cut(eface)
+                    ws = [Part.Wire(se) for se in Part.sortEdges(cut.Edges)]
+                    temp.extend(ws)
+
+            if not added:
+                # offset wires was completelly cutted by solids
+                # add offset wires as is in this case
+                goodWires.extend(owires)
+
+        if goodWires:
+            shapeTups.append((goodWires[0], goodWires, "OpenEdge"))
+        else:
             Path.Log.error(self.inaccessibleMsg)
 
         return shapeTups
@@ -594,10 +725,7 @@ class ObjectProfile(PathAreaOp.ObjectOp):
         self._addDebugObject("FlatWire", flatWire)
 
         openWires = []
-        params = self.areaOpAreaParams(obj, False)
-        passOffsets = [
-            self.ofstRadius + i * abs(params["Stepover"]) for i in range(params["ExtraPass"] + 1)
-        ][::-1]
+        passOffsets = self.areaOpAreaParams(obj, False)["Offset"]
         for po in passOffsets:
             self.ofstRadius = po
             if cutShp := self._getCutAreaCrossSection(obj, base, origWire, flatWire):
@@ -1373,6 +1501,7 @@ class ObjectProfile(PathAreaOp.ObjectOp):
 def SetupProperties():
     setup = PathAreaOp.SetupProperties()
     setup.extend([tup[1] for tup in ObjectProfile.areaOpProperties(False)])
+    setup.append("ExtensionOffset")
     return setup
 
 
