@@ -628,23 +628,6 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
         tooldiameter = obj.ToolController.Tool.Diameter.Value
         toolradius = tooldiameter / 2
 
-        if obj.StartDepth < obj.FinalDepth or isRoughly(obj.StartDepth.Value, obj.FinalDepth.Value):
-            obj.Path = Path.Path()
-            Path.Log.warning("StartDepth should be greater than FinalDepth")
-            return
-
-        if obj.StepDown < 0 or isRoughly(obj.StepDown.Value, 0):
-            obj.Path = Path.Path()
-            Path.Log.warning("StepDown should be greater than 0")
-            return
-
-        if safeHeight > clearanceHeight:
-            Path.Log.warning(
-                f"SafeHeight ({safeHeight}) is above ClearanceHeight ({clearanceHeight}). "
-                f"Using ClearanceHeight instead."
-            )
-            safeHeight = clearanceHeight
-
         singleHelix = obj.SingleHelix or obj.SpiralMill
 
         # Prepare linking parameters
@@ -933,16 +916,29 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
 
                 centerTop.z = centerBottom.z  # top point for next iteration
 
-        PathFeedRate.setFeedRate(self.commandlist, obj.ToolController)
+        if hasattr(obj, "HorizFeed") and hasattr(obj, "VertFeed"):
+            PathFeedRate.setFeedRate(
+                self.commandlist, obj.ToolController, obj.HorizFeed, obj.VertFeed
+            )
+        else:
+            PathFeedRate.setFeedRate(self.commandlist, obj.ToolController)
 
-        horizFeed = obj.ToolController.HorizFeed.Value
-        vertFeed = obj.ToolController.VertFeed.Value
+        if hasattr(obj, "HorizFeed") and obj.HorizFeed.Value:
+            horizFeed = obj.HorizFeed.Value
+        else:
+            horizFeed = obj.ToolController.HorizFeed.Value
+
+        if hasattr(obj, "VertFeed") and obj.VertFeed.Value:
+            vertFeed = obj.VertFeed.Value
+        else:
+            vertFeed = obj.ToolController.VertFeed.Value
 
         if obj.OverrideArcFeedRate and horizFeed and vertFeed:
             self.overrideArcFeed(self.commandlist, tooldiameter, horizFeed, vertFeed, obj.Side)
 
     def overrideArcFeed(self, commandlist, tooldiameter, horizFeedTC, vertFeedTC, profileSide):
         source = PathLanguage.Maneuver.FromPath(Path.Path(commandlist)).instr
+        k = 10  # max feed multiplier (feed * 0.1 < new feed < feed * 10)
         for i, instr in enumerate(source):
             if instr.isMove() and instr.isArc():
                 vertCutterMoveLength = instr.positionBegin().z - instr.positionEnd().z
@@ -953,7 +949,7 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
                         instr.arcRadius() + tooldiameter / 2
                     )
                 else:
-                    horizCutterMoveLength = instr.arcAngle() * (
+                    horizCutterMoveLength = instr.arcAngle() * abs(
                         instr.arcRadius() - tooldiameter / 2
                     )
 
@@ -962,8 +958,7 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
 
                 # Calculate needed horizontal feed
                 factorH = abs(math.cos(angle))
-                # Do not increase feed by more than x10
-                factorH = max(factorH, 0.1)
+                factorH = max(factorH, 1 / k)
                 pathFeedH = horizFeedTC / factorH
 
                 # circular tool paths correction
@@ -976,12 +971,12 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
                     # external circular tool path
                     majorDiameter = 2 * instr.arcRadius() - tooldiameter
                     factorHoriz = (majorDiameter + tooldiameter) / majorDiameter
+                factorHoriz = min(max(factorHoriz, 1 / k), k)
                 pathFeedH *= factorHoriz
 
                 # Calculate needed vertical feed
                 factorV = abs(math.sin(angle))
-                # Do not increase feed by more than x10
-                factorV = max(factorV, 0.1)
+                factorV = max(factorV, 1 / k)
                 pathFeedV = vertFeedTC / factorV
 
                 # use minimal value from calculated vertical and horizontal feeds

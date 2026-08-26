@@ -24,10 +24,12 @@ import FreeCAD
 import Part
 import Path
 from Path.Base.Generator import linking
+from Path.Base.Generator.ramp_entry import RampEntry
 import Path.Op.Base as PathOp
 import Path.Op.Util as PathOpUtil
 from PathScripts import PathUtils
 from PySide.QtCore import QT_TRANSLATE_NOOP
+import math
 
 __title__ = "Base class for PathArea based operations."
 __author__ = "sliptonic (Brad Collette)"
@@ -92,6 +94,16 @@ class ObjectOp(PathOp.ObjectOp):
             "Path",
             QT_TRANSLATE_NOOP("App::Property", "Split Arcs into discrete segments"),
         )
+        obj.addProperty(
+            "App::PropertyEnumeration",
+            "HandleMultipleFeatures",
+            "Path",
+            QT_TRANSLATE_NOOP(
+                "App::Property",
+                "Choose how to process multiple Base Geometry features.",
+            ),
+        )
+        obj.HandleMultipleFeatures = ("Individually", "Collectively")
 
         self.initAreaOp(obj)
 
@@ -143,6 +155,17 @@ class ObjectOp(PathOp.ObjectOp):
                 "Path",
                 QT_TRANSLATE_NOOP("App::Property", "Split Arcs into discrete segments"),
             )
+        if not hasattr(obj, "HandleMultipleFeatures"):
+            obj.addProperty(
+                "App::PropertyEnumeration",
+                "HandleMultipleFeatures",
+                "Path",
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Choose how to process multiple Base Geometry features.",
+                ),
+            )
+        obj.HandleMultipleFeatures = ("Individually", "Collectively")
 
         self.areaOpOnDocumentRestored(obj)
 
@@ -246,8 +269,17 @@ class ObjectOp(PathOp.ObjectOp):
             """
             Notes:
             - Finishing pass should be the last in order, no matter value 'StartAt'.
+            - For helix ramp need to skip step down and use only bottom shapes.
             - For 'StartAt' at 'Center' in Pocket op StartPoint should be in the center.
             """
+            rampParams = {
+                "commands": None,
+                "method": None,
+                "angle_rad": None,
+                "pitch": None,
+                "tc": obj.ToolController,
+                "ignoreAbove": obj.StartDepth.Value,
+            }
             reverseOpenWire = False
             zigzag = False
             oneStepDown = False
@@ -256,8 +288,34 @@ class ObjectOp(PathOp.ObjectOp):
             orientation = baseOrientation
             finishing = areaIndex >= len(areaParamsList) - getattr(obj, "FinishingPasses", 0)
             if "Path.Op.Profile" in obj.Proxy.__module__:
-                if finishing and obj.FinishingOneStepDown:
-                    oneStepDown = True
+                if obj.RampAngle:
+                    rampParams["angle_rad"] = math.radians(obj.RampAngle.Value)
+                else:
+                    rampParams["pitch"] = obj.StepDown.Value
+
+                if finishing:  # Profile finishing pass
+                    if obj.FinishingOneStepDown:
+                        oneStepDown = True
+                    elif obj.RampMethod == "Helix":
+                        rampParams["method"] = 0
+                        oneStepDown = True
+                elif obj.RampMethod != "None":
+                    oneStepDown = obj.RampMethod == "Helix"
+                    rampParams["method"] = (
+                        0 if obj.RampMethod == "Helix" else int(obj.RampMethod.split()[1])
+                    )
+
+                if rampParams["method"] and not rampParams["angle_rad"]:
+                    # Ramp methods 1-3 need an angle, plunge instead
+                    if areaIndex == 0:
+                        Path.Log.warning(
+                            translate(
+                                "PathAreaOp", "%s: ramp method '%s' needs a ramp angle, plunging"
+                            )
+                            % (obj.Label, obj.RampMethod)
+                        )
+                    rampParams["method"] = None
+
                 if (
                     obj.UseLongestEdge
                     and not obj.UseStartPoint
@@ -270,9 +328,17 @@ class ObjectOp(PathOp.ObjectOp):
                     orientation = not baseOrientation
                     if obj.FinishingOneStepDown:
                         oneStepDown = True
-                elif obj.ClearingPattern in ("Offset",):  # Pocket clearing path
+                    elif obj.FinishingRampHelix:
+                        oneStepDown = True
+                        rampParams["method"] = 0
+                        rampParams["pitch"] = obj.StepDown.Value
+                elif obj.ClearingPattern in ("Offset", "Helix"):  # Pocket clearing path
                     if obj.StartAt == "Center":
                         pocketCenter = True
+                    if obj.ClearingPattern == "Helix":
+                        oneStepDown = True
+                        rampParams["method"] = 0
+                        rampParams["pitch"] = obj.StepDown.Value
                 if obj.CutMode == "Climb" and obj.ClearingPattern in ("Grid", "Line"):
                     reverseOpenWire = True
                 if obj.ClearingPattern == "ZigZag":
@@ -313,18 +379,18 @@ class ObjectOp(PathOp.ObjectOp):
             if not sections:
                 continue
 
-            opts = (reverseOpenWire, middleEdge, pocketCenter, orientation, finishing)
+            opts = (rampParams, reverseOpenWire, middleEdge, pocketCenter, orientation, finishing)
             units.extend((opts, sec.getShape()) for sec in sections)
 
         if obj.Proxy.__module__ == "Path.Op.Profile":
             # Cut all roughing offsets at one height before stepping down,
             # finishing passes stay last
-            roughing = [u for u in units if not u[0][4]]
+            roughing = [u for u in units if not u[0][5]]
             roughing.sort(key=lambda u: -round(u[1].BoundBox.ZMax, 6))  # stable: keeps pass order
-            units = roughing + [u for u in units if u[0][4]]
+            units = roughing + [u for u in units if u[0][5]]
 
         for opts, sh in units:  # each shape is a path/wires at one height
-            reverseOpenWire, middleEdge, pocketCenter, orientation, _ = opts
+            rampParams, reverseOpenWire, middleEdge, pocketCenter, orientation, _ = opts
             pathParams["orientation"] = orientation
             if not (wires := sh.Wires):
                 continue
@@ -351,6 +417,7 @@ class ObjectOp(PathOp.ObjectOp):
                 Path.Log.debug("pp: {}, end vector: {}".format(pp, end_vector))
 
                 if pp.Size:
+                    doRamp = rampParams["method"] is not None
                     while pp.Commands[0].Name in Constants.GCODE_MOVE_RAPID:
                         pp.deleteCommand(0)  # remove rapid moves
                     plungeMove = pp.Commands[0]
@@ -371,6 +438,9 @@ class ObjectOp(PathOp.ObjectOp):
                         linkingArgs["start_position"] = self.endVector
                         linkingArgs["target_position"] = p
                         cmds.extend(linking.get_linking_moves(**linkingArgs))
+                        zMax = max(cmd.z for cmd in cmds) if cmds else p.z
+                        if rampParams["method"] == 0 and zMax < obj.SafeHeight.Value:
+                            doRamp = False
                         for cmd in cmds:
                             if cmd.z < obj.SafeHeight.Value:
                                 cmd.Name = "G1"
@@ -378,7 +448,17 @@ class ObjectOp(PathOp.ObjectOp):
                                 par["F"] = self.vertFeed
                                 cmd.Parameters = par
 
+                        if doRamp and len(cmds) < 2:
+                            c = commands[-1]
+                            cmds.insert(0, Path.Command("G1", {"X": c.x, "Y": c.y, "Z": c.z}))
+
                     cmds.extend(pp.Commands)
+                    if doRamp:  # generate ramp entry
+                        if Path.Geom.isRoughly(cmds[-1].z, obj.FinalDepth.Value):
+                            cmds.append(Path.Command("G0", {"Z": obj.SafeHeight.Value}))
+                        rampParams["commands"] = cmds
+                        cmds = RampEntry(**rampParams).generate()
+
                     commands.extend(cmds)
                     self.endVector = end_vector
                     sortFrom = end_vector
@@ -474,50 +554,43 @@ class ObjectOp(PathOp.ObjectOp):
         # Initiate depthparams and calculate operation heights for operation
         self.depthparams = self._customDepthParams(obj, obj.StartDepth.Value, obj.FinalDepth.Value)
 
-        shapes = self.areaOpShapes(obj)
+        shapeTups = self.areaOpShapes(obj)
 
         # Sorting shapes
         if (
-            len(shapes) > 1
-            and getattr(obj, "SortingMode", None) != "Manual"
-            and getattr(obj, "HandleMultipleFeatures", False) != "Collectively"
+            len(shapeTups) > 1
+            and obj.SortingMode != "Manual"
+            and obj.HandleMultipleFeatures != "Collectively"
         ):
             locations = []
-            for s in shapes:
-                shp = s[0]
-                locations.append({"x": shp.BoundBox.XMax, "y": shp.BoundBox.YMax, "shape": s})
+            for tup in shapeTups:
+                shp = tup[0]
+                locations.append({"x": shp.BoundBox.XMax, "y": shp.BoundBox.YMax, "tup": tup})
             locations = PathUtils.sort_locations(locations, ["x", "y"])
-            shapes = [j["shape"] for j in locations]
+            shapeTups = [j["tup"] for j in locations]
 
         # Adjust tuples length received from other PathWB tools/operations
-        rshapes = []
-        for shp in shapes:
-            if len(shp) == 2:
-                rshapes.append((shp[0], shp[1], "otherOp"))
-            elif len(shp) == 3 and isinstance(shp[1], list):  # unpack open wires
-                rshapes.extend((s, False, "OpenEdge") for s in shp[1])
-            else:
-                rshapes.append(shp)
-
-        shapes = rshapes
+        for i in range(len(shapeTups)):
+            if len(shapeTups[i]) == 2:
+                shapeTups[i] = (shapeTups[i][0], shapeTups[i][1], "otherOp")
 
         # Combine similar tasks for Collectively HandleMultipleFeatures
         if (
-            obj.Proxy.__module__ == "Path.Op.Profile"
-            and len(shapes) > 1
-            and getattr(obj, "HandleMultipleFeatures", False) == "Collectively"
+            len(shapeTups) > 1
+            and obj.HandleMultipleFeatures == "Collectively"
+            and obj.Proxy.__module__ != "Path.Op.Pocket"  # Pocket has own process for Collectively
         ):
-            keys = {(iH, desc) for _, iH, desc in shapes}
+            keys = {(iH, desc) for _, iH, desc in shapeTups}
             collectively = []
             for key in keys:
                 combine = []
-                for sh, iH, desc in shapes:
+                for sh, iH, desc in shapeTups:
                     if (iH, desc) == key:
                         combine.append(sh)
                 fc = Part.makeCompound(combine)
                 collectively.append((fc, key[0], key[1]))
 
-            shapes = collectively
+            shapeTups = collectively
 
         # Build linking kwargs for collision-aware between-feature transitions
         self.initmove = True
@@ -525,9 +598,9 @@ class ObjectOp(PathOp.ObjectOp):
         if PathOp.FeatureLinking & self.opFeatures(obj):
             linkingArgs = linking.get_linking_args(obj, self.job)
 
-        for shape, isHole, sub in shapes:
+        for shape, isHole, desc in shapeTups:
             try:
-                if sub == "OpenEdge":
+                if desc == "OpenEdge":
                     ppCmds = self._buildProfileOpenEdges(obj, shape, linkingArgs)
                 else:
                     ppCmds = self._buildPathArea(obj, shape, isHole, linkingArgs)

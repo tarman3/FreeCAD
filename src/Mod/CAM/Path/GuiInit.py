@@ -66,12 +66,14 @@ def Startup():
         from Path.Op.Gui import Comment
         from Path.Op.Gui import Custom
         from Path.Op.Gui import Deburr
+        from Path.Op.Gui import Deburring
         from Path.Op.Gui import Drilling
         from Path.Op.Gui import Engrave
         from Path.Op.Gui import Helix
         from Path.Op.Gui import MillFace
         from Path.Op.Gui import MillFacing
         from Path.Op.Gui import PathShape
+        from Path.Op.Gui import PathCompoundTC
         from Path.Op.Gui import Pocket
         from Path.Op.Gui import PocketShape
         from Path.Op.Gui import Probe
