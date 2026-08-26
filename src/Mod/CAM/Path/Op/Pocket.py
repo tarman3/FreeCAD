@@ -1,25 +1,23 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2014 Yorik van Havre <yorik@uncreated.net>
+# SPDX-FileNotice: Part of the FreeCAD project.
 
-# ***************************************************************************
-# *   Copyright (c) 2014 Yorik van Havre <yorik@uncreated.net>              *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 from PySide.QtCore import QT_TRANSLATE_NOOP
 import FreeCAD
@@ -27,10 +25,7 @@ import Part
 import Path
 import Path.Op.Base as PathOp
 import Path.Op.PocketBase as PathPocketBase
-import PathScripts.PathUtils as PathUtils
-
-# lazily loaded modules
-from lazy_loader.lazy_loader import LazyLoader
+from PathScripts import PathUtils
 
 __title__ = "CAM 3D Pocket Operation"
 __author__ = "Yorik van Havre <yorik@uncreated.net>"
@@ -56,17 +51,6 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
 
     def initPocketOp(self, obj):
         """initPocketOp(obj) ... setup receiver"""
-        if not hasattr(obj, "HandleMultipleFeatures"):
-            obj.addProperty(
-                "App::PropertyEnumeration",
-                "HandleMultipleFeatures",
-                "Pocket",
-                QT_TRANSLATE_NOOP(
-                    "App::Property",
-                    "Choose how to process multiple Base Geometry features.",
-                ),
-            )
-
         if not hasattr(obj, "AdaptivePocketStart"):
             obj.addProperty(
                 "App::PropertyBool",
@@ -113,17 +97,12 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
         'translated' is list of translated string literals
         """
 
-        enums = {
-            "HandleMultipleFeatures": [
-                (translate("CAM_Pocket", "Collectively"), "Collectively"),
-                (translate("CAM_Pocket", "Individually"), "Individually"),
-            ],
-        }
+        enums = {}
 
         if dataType == "raw":
             return enums
 
-        data = list()
+        data = []
         idx = 0 if dataType == "translated" else 1
 
         Path.Log.debug(enums)
@@ -145,120 +124,9 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
     def opUpdateDepths(self, obj):
         """opUpdateDepths(obj) ... Implement special depths calculation."""
         # Set Final Depth to bottom of model if whole model is used
-        if not obj.Base or len(obj.Base) == 0:
-            if len(self.job.Model.Group) == 1:
-                finDep = self.job.Model.Group[0].Shape.BoundBox.ZMin
-            else:
-                finDep = min([m.Shape.BoundBox.ZMin for m in self.job.Model.Group])
+        if not obj.Base:
+            finDep = min(m.Shape.BoundBox.ZMin for m in self.job.Model.Group)
             obj.setExpression("OpFinalDepth", "{} mm".format(finDep))
-
-    def areaOpShapes(self, obj):
-        """areaOpShapes(obj) ... return shapes representing the solids to be removed."""
-        Path.Log.track()
-
-        subObjTups = []
-        removalshapes = []
-
-        if obj.Base:
-            Path.Log.debug("base items exist.  Processing... ")
-            for base in self.baseShapes(obj):
-                Path.Log.debug("baseShapes item: {}".format(base))
-
-                # Check if all subs are faces
-                allSubsFaceType = True
-                Faces = []
-                for sub in base[1]:
-                    if "Face" in sub:
-                        face = getattr(base[0].Shape, sub)
-                        Faces.append(face)
-                        subObjTups.append((sub, face))
-                    else:
-                        allSubsFaceType = False
-                        break
-
-                if len(Faces) == 0:
-                    allSubsFaceType = False
-
-                if allSubsFaceType is True and obj.HandleMultipleFeatures == "Collectively":
-                    fzmin, fzmax = self.getMinMaxOfFaces(Faces)
-                    if obj.FinalDepth.Value < fzmin:
-                        Path.Log.warning(
-                            translate(
-                                "CAM",
-                                "Final depth set below ZMin of face(s) selected.",
-                            )
-                        )
-
-                    if obj.AdaptivePocketStart is True or obj.AdaptivePocketFinish is True:
-                        pocketTup = self.calculateAdaptivePocket(obj, base, subObjTups)
-                        if pocketTup is not False:
-                            obj.removalshape = pocketTup[0]
-                            removalshapes.append(pocketTup)  # (shape, isHole, detail)
-                    else:
-                        shape = Part.makeCompound(Faces)
-                        env = PathUtils.getEnvelope(
-                            base[0].Shape, subshape=shape, depthparams=self.depthparams
-                        )
-                        rawRemovalShape = env.cut(base[0].Shape)
-                        faceExtrusions = [f.extrude(FreeCAD.Vector(0.0, 0.0, 1.0)) for f in Faces]
-                        obj.removalshape = _identifyRemovalSolids(rawRemovalShape, faceExtrusions)
-                        removalshapes.append(
-                            (obj.removalshape, False, "3DPocket")
-                        )  # (shape, isHole, detail)
-                else:
-                    for sub in base[1]:
-                        if "Face" in sub:
-                            shape = Part.makeCompound([getattr(base[0].Shape, sub)])
-                        else:
-                            edges = [getattr(base[0].Shape, sub) for sub in base[1]]
-                            shape = Part.makeFace(edges, "Part::FaceMakerSimple")
-
-                        env = PathUtils.getEnvelope(
-                            base[0].Shape, subshape=shape, depthparams=self.depthparams
-                        )
-                        rawRemovalShape = env.cut(base[0].Shape)
-                        faceExtrusions = [shape.extrude(FreeCAD.Vector(0.0, 0.0, 1.0))]
-                        obj.removalshape = _identifyRemovalSolids(rawRemovalShape, faceExtrusions)
-                        removalshapes.append((obj.removalshape, False, "3DPocket"))
-
-        else:  # process the job base object as a whole
-            Path.Log.debug("processing the whole job base object")
-            for base in self.model:
-                if obj.ProcessStockArea is True:
-                    job = PathUtils.findParentJob(obj)
-
-                    stockEnvShape = PathUtils.getEnvelope(
-                        job.Stock.Shape, subshape=None, depthparams=self.depthparams
-                    )
-
-                    rawRemovalShape = stockEnvShape.cut(base.Shape)
-                else:
-                    env = PathUtils.getEnvelope(
-                        base.Shape, subshape=None, depthparams=self.depthparams
-                    )
-                    rawRemovalShape = env.cut(base.Shape)
-
-                # Identify target removal shapes after cutting envelope with base shape
-                removalSolids = [
-                    s
-                    for s in rawRemovalShape.Solids
-                    if Path.Geom.isRoughly(s.BoundBox.ZMax, rawRemovalShape.BoundBox.ZMax)
-                ]
-
-                # Fuse multiple solids
-                if len(removalSolids) > 1:
-                    seed = removalSolids[0]
-                    for tt in removalSolids[1:]:
-                        fusion = seed.fuse(tt)
-                        seed = fusion
-                    removalShape = seed
-                else:
-                    removalShape = removalSolids[0]
-
-                obj.removalshape = removalShape
-                removalshapes.append((obj.removalshape, False, "3DPocket"))
-
-        return removalshapes
 
     def areaOpSetDefaultValues(self, obj, job):
         """areaOpSetDefaultValues(obj, job) ... set default values"""
@@ -269,6 +137,82 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
         obj.AdaptivePocketFinish = False
         obj.ProcessStockArea = False
         obj.FinishingPasses = (0, 0, 999999, 1)
+
+    def areaOpShapes(self, obj):
+        print("Pocket areaOpShapes")
+        """areaOpShapes(obj) ... return shapes representing the solids to be removed."""
+        Path.Log.track()
+
+        self.tol = self.job.GeometryTolerance.Value or 0.01
+
+        subObjTups = []
+        removalshapes = []
+
+        if not obj.Base:
+            return []
+
+        Path.Log.debug("base items exist.  Processing... ")
+        for base, subNames in self.baseShapes(obj):
+            Path.Log.debug(f"baseShapes item: {base, subNames}")
+
+            # Check if all subs are faces
+            allSubsFaceType = True
+            Faces = []
+            for subName in subNames:
+                if "Face" in subName:
+                    face = getattr(base.Shape, subName)
+                    Faces.append(face)
+                    subObjTups.append((subName, face))
+                else:
+                    allSubsFaceType = False
+                    break
+
+            if not Faces:
+                allSubsFaceType = False
+
+            if allSubsFaceType is True and obj.HandleMultipleFeatures == "Collectively":
+                fzmin, _ = self.getMinMaxOfFaces(Faces)
+                if obj.FinalDepth.Value < fzmin:
+                    Path.Log.warning(
+                        translate(
+                            "CAM",
+                            "Final depth set below ZMin of face(s) selected.",
+                        )
+                    )
+
+                if obj.AdaptivePocketStart is True or obj.AdaptivePocketFinish is True:
+                    pocketTup = self.calculateAdaptivePocket(obj, (base, subNames), subObjTups)
+                    if pocketTup is not False:
+                        obj.removalshape = pocketTup[0]
+                        removalshapes.append(pocketTup)  # (shape, isHole, detail)
+                else:
+                    shape = Part.makeCompound(Faces)
+                    env = PathUtils.getEnvelope(
+                        base.Shape, subshape=shape, depthparams=self.depthparams
+                    )
+                    rawRemovalShape = env.cut(base.Shape)
+                    faceExtrusions = [f.extrude(FreeCAD.Vector(0.0, 0.0, 1.0)) for f in Faces]
+                    obj.removalshape = _identifyRemovalSolids(rawRemovalShape, faceExtrusions)
+                    removalshapes.append(
+                        (obj.removalshape, False, "3DPocket")
+                    )  # (shape, isHole, detail)
+            else:
+                for subName in subNames:
+                    if "Face" in subName:
+                        shape = Part.makeCompound([getattr(base.Shape, subName)])
+                    else:
+                        edges = [getattr(base.Shape, subName) for subName in subNames]
+                        shape = Part.makeFace(edges, "Part::FaceMakerSimple")
+
+                    env = PathUtils.getEnvelope(
+                        base.Shape, subshape=shape, depthparams=self.depthparams
+                    )
+                    rawRemovalShape = env.cut(base.Shape)
+                    faceExtrusions = [shape.extrude(FreeCAD.Vector(0.0, 0.0, 1.0))]
+                    obj.removalshape = _identifyRemovalSolids(rawRemovalShape, faceExtrusions)
+                    removalshapes.append((obj.removalshape, False, "3DPocket"))
+
+        return removalshapes
 
     # methods for eliminating air milling with some pockets: adaptive start and finish
     def calculateAdaptivePocket(self, obj, base, subObjTups):
@@ -297,7 +241,7 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
         # Order faces around common center of mass
         subObjTups = self.orderFacesAroundCenterOfMass(subObjTups)
         # find connected edges and map to edge names of base
-        connectedEdges, touching = self.findSharedEdges(subObjTups)
+        _, touching = self.findSharedEdges(subObjTups)
         low, high = self.identifyUnconnectedEdges(subObjTups, touching)
 
         if len(high) > 0 and obj.AdaptivePocketStart is True:
@@ -553,18 +497,17 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
         # Rotate list items so highest face is first
         zmax = newList[0][1].BoundBox.ZMax
         idx = 0
-        for i in range(0, len(newList)):
+        for i in range(len(newList)):
             sub, face = newList[i]
             fIdx = getFaceIdx(sub)
             # face = FreeCAD.ActiveDocument.getObject(bsNm).Shape.Faces[fIdx]
             if face.BoundBox.ZMax > zmax:
                 zmax = face.BoundBox.ZMax
                 idx = i
-            if face.BoundBox.ZMax == zmax:
-                if fIdx < getFaceIdx(newList[idx][0]):
-                    idx = i
+            if face.BoundBox.ZMax == zmax and fIdx < getFaceIdx(newList[idx][0]):
+                idx = i
         if idx > 0:
-            for z in range(0, idx):
+            for z in range(idx):
                 newList.append(newList.pop(0))
 
         return newList
@@ -572,7 +515,6 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
     def findSharedEdges(self, subObjTups):
         """findSharedEdges(self, subObjTups)
         Find connected edges given a group of faces"""
-        checkoutList = []
         searchedList = []
         shared = []
         touching = {}
@@ -583,11 +525,9 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
             touching[sub] = []
 
         # prepare list of indexes as proxies for subObjTups items
-        numFaces = len(subObjTups)
-        for nf in range(0, numFaces):
-            checkoutList.append(nf)
+        checkoutList = list(range(len(subObjTups)))
 
-        for co in range(0, len(checkoutList)):
+        for co in range(len(checkoutList)):
             if len(checkoutList) < 2:
                 break
 
@@ -597,14 +537,14 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
             sub1, face1 = subObjTups[checkedOut1]
 
             # Compare checked out sub to others for shared
-            for co in range(0, len(checkoutList)):
+            for co in range(len(checkoutList)):
                 # Checkout  second sub for analysis
                 sub2, face2 = subObjTups[co]
 
                 # analyze two subs for common faces
-                for ei1 in range(0, len(face1.Edges)):
+                for ei1 in range(len(face1.Edges)):
                     edg1 = face1.Edges[ei1]
-                    for ei2 in range(0, len(face2.Edges)):
+                    for ei2 in range(len(face2.Edges)):
                         edg2 = face2.Edges[ei2]
                         if edg1.isSame(edg2) is True:
                             Path.Log.debug(
@@ -613,15 +553,15 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
                             shared.append((sub1, face1, ei1))
                             touching[sub1].append(ei1)
                             touching[sub2].append(ei2)
-        # Efor
-        # Remove duplicates from edge lists
-        for sub in touching:
-            touchingCleaned[sub] = []
-            for s in touching[sub]:
-                if s not in touchingCleaned[sub]:
-                    touchingCleaned[sub].append(s)
 
-        return (shared, touchingCleaned)
+        # Remove duplicates from edge lists
+        for key, value in touching.items():
+            touchingCleaned[key] = []
+            for s in value:
+                if s not in touchingCleaned[key]:
+                    touchingCleaned[key].append(s)
+
+        return shared, touchingCleaned
 
     def identifyUnconnectedEdges(self, subObjTups, touching):
         """identifyUnconnectedEdges(subObjTups, touching)
@@ -634,7 +574,7 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
 
         for sub, face in subObjTups:
             holding = []
-            for ei in range(0, len(face.Edges)):
+            for ei in range(len(face.Edges)):
                 if ei not in touching[sub]:
                     holding.append((sub, face, ei))
             # Assign unconnected edges based upon category: high or low
@@ -675,34 +615,29 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
         """findCommonVertexIndexes(edge1, edge2, show=False)
         Compare vertexes of two edges to identify a common vertex.
         Returns the vertex index of edge1 to which edge2 is connected"""
-        if show is True:
+        if show:
             Path.Log.info("New findCommonVertex()... ")
 
-        oIdx = 0
         listOne = edge1.Vertexes
         listTwo = edge2.Vertexes
 
         # Find common vertexes
-        for o in listOne:
-            if show is True:
+        for oIdx, o in enumerate(listOne):
+            if show:
                 Path.Log.info("   one ({}, {}, {})".format(o.X, o.Y, o.Z))
             for t in listTwo:
-                if show is True:
+                if show:
                     Path.Log.error("two ({}, {}, {})".format(t.X, t.Y, t.Z))
-                if o.X == t.X:
-                    if o.Y == t.Y:
-                        if o.Z == t.Z:
-                            if show is True:
-                                Path.Log.info("found")
-                            return oIdx
-            oIdx += 1
+                if o.X == t.X and o.Y == t.Y and o.Z == t.Z:
+                    if show:
+                        Path.Log.info("found")
+                    return oIdx
         return -1
 
     def groupConnectedEdges(self, holding):
         """groupConnectedEdges(self, holding)
         Take edges and determine which are connected.
         Group connected chains/loops into: low and high"""
-        holds = []
         grps = []
         searched = []
         stop = False
@@ -729,14 +664,9 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
             return atchmnts
 
         def isSameVertex(o, t):
-            if o.X == t.X:
-                if o.Y == t.Y:
-                    if o.Z == t.Z:
-                        return True
-            return False
+            return o.X == t.X and o.Y == t.Y and o.Z == t.Z
 
-        for hi in range(0, len(holding)):
-            holds.append(hi)
+        holds = list(range(len(holding)))
 
         # Place initial edge in first group and update attachments
         h0 = holds.pop()
@@ -750,12 +680,12 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
             save = False
 
             h2 = holds.pop()
-            sub2, face2, ei2 = holding[h2]
+            _, face2, ei2 = holding[h2]
 
             # Cycle through attachments for connection to existing
             for g, t in attachments:
                 h1 = grps[g][t]
-                sub1, face1, ei1 = holding[h1]
+                _, face1, ei1 = holding[h1]
 
                 edg1 = face1.Edges[ei1]
                 edg2 = face2.Edges[ei2]
@@ -791,18 +721,16 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
                 else:
                     # no attachment found
                     save = True
-            # Efor
+
             if save is True:
                 searched.append(h2)
-                if len(holds) == 0:
-                    if len(grps) == 1:
-                        h0 = searched.pop(0)
-                        grps.append([h0])
-                        attachments = updateAttachments(grps)
-                        holds.extend(searched)
-            # Eif
+                if len(holds) == 0 and len(grps) == 1:
+                    h0 = searched.pop(0)
+                    grps.append([h0])
+                    attachments = updateAttachments(grps)
+                    holds.extend(searched)
+
             loops += 1
-        # Ewhile
 
         low = []
         high = []
@@ -815,13 +743,13 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
         if len(grps[0]) > 0:
             for g in grps[0]:
                 grp0.append(holding[g])
-                sub, face, ei = holding[g]
+                _, face, ei = holding[g]
                 com0 = com0.add(face.Edges[ei].CenterOfMass)
             com0z = com0.z / len(grps[0])
         if len(grps[1]) > 0:
             for g in grps[1]:
                 grp1.append(holding[g])
-                sub, face, ei = holding[g]
+                _, face, ei = holding[g]
                 com1 = com1.add(face.Edges[ei].CenterOfMass)
             com1z = com1.z / len(grps[1])
 
@@ -838,51 +766,46 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
 
         return (low, high)
 
-    def getMinMaxOfFaces(self, Faces):
+    def getMinMaxOfFaces(self, shapes):
         """getMinMaxOfFaces(Faces)
         return the zmin and zmax values for given set of faces or edges."""
-        zmin = Faces[0].BoundBox.ZMax
-        zmax = Faces[0].BoundBox.ZMin
-        for f in Faces:
-            if f.BoundBox.ZMin < zmin:
-                zmin = f.BoundBox.ZMin
-            if f.BoundBox.ZMax > zmax:
-                zmax = f.BoundBox.ZMax
-        return (zmin, zmax)
+        zmin = min(sh.BoundBox.ZMin for sh in shapes)
+        zmax = max(sh.BoundBox.ZMax for sh in shapes)
+        return zmin, zmax
 
 
-def _identifyRemovalSolids(sourceShape, commonShapes):
+def _identifyRemovalSolids(sourceShape, commonShapes, tol=0.01):
     """_identifyRemovalSolids(sourceShape, commonShapes)
     Loops through solids in sourceShape to identify commonality with solids in commonShapes.
     The sourceShape solids with commonality are returned as Part.Compound shape."""
     common = Part.makeCompound(commonShapes)
-    removalSolids = [s for s in sourceShape.Solids if s.common(common).Volume > 0.0]
+    removalSolids = [s for s in sourceShape.Solids if s.common(common, tol).Volume > 0]
     return Part.makeCompound(removalSolids)
 
 
 def _extrudeBaseDown(base):
     """_extrudeBaseDown(base)
     Extrudes and fuses all non-vertical faces downward to a level 1.0 mm below base ZMin."""
-    allExtrusions = list()
+    allExtrusions = []
     zMin = base.Shape.BoundBox.ZMin
-    bbFace = Path.Geom.makeBoundBoxFace(base.Shape.BoundBox, offset=5.0)
-    bbFace.translate(FreeCAD.Vector(0.0, 0.0, float(int(base.Shape.BoundBox.ZMin - 5.0))))
-    direction = FreeCAD.Vector(0.0, 0.0, -1.0)
+    bbFace = Path.Geom.makeBoundBoxFace(base.Shape.BoundBox, offset=5)
+    bbFace.translate(FreeCAD.Vector(0, 0, int(base.Shape.BoundBox.ZMin - 5)))
+    direction = FreeCAD.Vector(0, 0, -1)
 
     # Make projections of each non-vertical face and extrude it
     for f in base.Shape.Faces:
         fbb = f.BoundBox
-        if not Path.Geom.isRoughly(f.normalAt(0, 0).z, 0.0):
+        if not Path.Geom.isRoughly(f.normalAt(0, 0).z, 0):
             pp = bbFace.makeParallelProjection(f.Wires[0], direction)
             face = Part.Face(Part.Wire(pp.Edges))
-            face.translate(FreeCAD.Vector(0.0, 0.0, fbb.ZMin))
-            ext = face.extrude(FreeCAD.Vector(0.0, 0.0, zMin - fbb.ZMin - 1.0))
+            face.translate(FreeCAD.Vector(0, 0, fbb.ZMin))
+            ext = face.extrude(FreeCAD.Vector(0, 0, zMin - fbb.ZMin - 1))
             allExtrusions.append(ext)
 
     # Fuse all extrusions together
     seed = allExtrusions.pop()
     fusion = seed.fuse(allExtrusions)
-    fusion.translate(FreeCAD.Vector(0.0, 0.0, zMin - fusion.BoundBox.ZMin - 1.0))
+    fusion.translate(FreeCAD.Vector(0, 0, zMin - fusion.BoundBox.ZMin - 1))
 
     return fusion.cut(base.Shape)
 

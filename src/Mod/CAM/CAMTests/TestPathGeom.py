@@ -182,25 +182,62 @@ class TestPathGeom(PathTestBase):
         )
 
         # bezier curves
-        # ml: I know nothing about bezier curves, so this might be bollocks
-        # and now I disable the tests because they seem to fail on OCE
-        # bezier = Part.BezierCurve()
-        # bezier.setPoles([Vector(), Vector(1,1,0), Vector(2,1,0), Vector(2,2,0)])
-        # self.assertTrue(Path.Geom.isHorizontal(Part.Edge(bezier)))
-        # self.assertFalse(Path.Geom.isVertical(Part.Edge(bezier)))
-        # bezier.setPoles([Vector(), Vector(1,1,1), Vector(2,1,0), Vector(2,2,0)])
-        # self.assertFalse(Path.Geom.isHorizontal(Part.Edge(bezier)))
-        # self.assertFalse(Path.Geom.isVertical(Part.Edge(bezier)))
-        # bezier.setPoles([Vector(), Vector(1,1,0), Vector(2,1,1), Vector(2,2,0)])
-        # self.assertFalse(Path.Geom.isHorizontal(Part.Edge(bezier)))
-        # self.assertFalse(Path.Geom.isVertical(Part.Edge(bezier)))
-        # bezier.setPoles([Vector(), Vector(1,1,0), Vector(2,1,0), Vector(2,2,1)])
-        # self.assertFalse(Path.Geom.isHorizontal(Part.Edge(bezier)))
-        # self.assertFalse(Path.Geom.isVertical(Part.Edge(bezier)))
-        #
-        # bezier.setPoles([Vector(), Vector(1,1,1), Vector(2,2,2), Vector(0,0,3)])
-        # self.assertFalse(Path.Geom.isHorizontal(Part.Edge(bezier)))
-        # self.assertTrue(Path.Geom.isVertical(Part.Edge(bezier)))
+        bezier = Part.BezierCurve()
+        bezier.setPoles([Vector(), Vector(1, 1, 0), Vector(2, 1, 0), Vector(2, 2, 0)])
+        self.assertTrue(Path.Geom.isHorizontal(Part.Edge(bezier)))
+        self.assertFalse(Path.Geom.isVertical(Part.Edge(bezier)))
+        bezier.setPoles([Vector(), Vector(1, 1, 1), Vector(2, 1, 0), Vector(2, 2, 0)])
+        self.assertFalse(Path.Geom.isHorizontal(Part.Edge(bezier)))
+        self.assertFalse(Path.Geom.isVertical(Part.Edge(bezier)))
+        bezier.setPoles([Vector(), Vector(1, 1, 0), Vector(2, 1, 1), Vector(2, 2, 0)])
+        self.assertFalse(Path.Geom.isHorizontal(Part.Edge(bezier)))
+        self.assertFalse(Path.Geom.isVertical(Part.Edge(bezier)))
+        bezier.setPoles([Vector(), Vector(1, 1, 0), Vector(2, 1, 0), Vector(2, 2, 1)])
+        self.assertFalse(Path.Geom.isHorizontal(Part.Edge(bezier)))
+        self.assertFalse(Path.Geom.isVertical(Part.Edge(bezier)))
+
+        bezier.setPoles([Vector(), Vector(1, 1, 1), Vector(2, 2, 2), Vector(0, 0, 3)])
+        self.assertFalse(Path.Geom.isHorizontal(Part.Edge(bezier)))
+        self.assertTrue(Path.Geom.isVertical(Part.Edge(bezier)))
+
+        # horizontal straight bspline
+        spline = Part.BSplineCurve()
+        spline.interpolate([Vector(10, 0, 0), Vector(20, 0, 0)])
+        edge = Part.Edge(spline)
+        self.assertTrue(Path.Geom.isHorizontal(edge))
+        self.assertFalse(Path.Geom.isVertical(edge))
+
+        # vertical straight bspline
+        spline = Part.BSplineCurve()
+        spline.interpolate([Vector(10, 0, 0), Vector(10, 0, 20)])
+        edge = Part.Edge(spline)
+        self.assertTrue(Path.Geom.isVertical(edge))
+        self.assertFalse(Path.Geom.isHorizontal(edge))
+
+        # inclined straight bspline
+        spline = Part.BSplineCurve()
+        spline.interpolate([Vector(10, 0, 0), Vector(20, 10, 20)])
+        edge = Part.Edge(spline)
+        self.assertFalse(Path.Geom.isVertical(edge))
+        self.assertFalse(Path.Geom.isHorizontal(edge))
+
+        # horizontal bspline (circle)
+        edge_circle = Part.Edge(Part.makeCircle(4, Vector(), Vector(0, 0, 1)))
+        edge_bspline = edge_circle.toNurbs().Edges[0]
+        self.assertTrue(Path.Geom.isHorizontal(edge_bspline))
+        self.assertFalse(Path.Geom.isVertical(edge_bspline))
+
+        # vertical bspline (circle)
+        edge_circle = Part.Edge(Part.makeCircle(4, Vector(), Vector(1, 0, 0)))
+        edge_bspline = edge_circle.toNurbs().Edges[0]
+        self.assertTrue(Path.Geom.isVertical(edge_bspline))
+        self.assertFalse(Path.Geom.isHorizontal(edge_bspline))
+
+        # inclined bspline (circle)
+        edge_circle = Part.Edge(Part.makeCircle(4, Vector(), Vector(1, 1, 1)))
+        edge_bspline = edge_circle.toNurbs().Edges[0]
+        self.assertFalse(Path.Geom.isVertical(edge_bspline))
+        self.assertFalse(Path.Geom.isHorizontal(edge_bspline))
 
     def test04(self):
         """Verify isVertical/isHorizontal for faces"""
@@ -453,6 +490,12 @@ class TestPathGeom(PathTestBase):
             "CCW",
         )
 
+        # test short arc: issue https://github.com/FreeCAD/FreeCAD/issues/33146
+        startPoint = Vector(-195.121182, 57.494287, -5.999999)
+        cmd = Path.Command("G2 I-2.013849 J1.305531 K0.000000 X-195.122314 Y57.492542 Z-5.999999")
+        edge = Path.Geom.edgeForCmd(cmd, startPoint)
+        self.assertRoughly(edge.Length, 0.002, 0.001)
+
     def test30(self):
         """Verify proper geometry for arcs with rising and fall ing Z-axis are created."""
         # print("------ rising helix -------")
@@ -533,11 +576,11 @@ class TestPathGeom(PathTestBase):
         self.assertCommandEqual(cmds(p1, p4, p3, True), cmd("G2", p1, Vector(0, -10, 0)))
 
     def test41(self):
-        """Verify circle results in proper G2/G3 commands."""
+        """Verify full circle results in proper two G2/G3 commands."""
 
         def cmds(center, radius, up=True):
             norm = Vector(0, 0, 1) if up else Vector(0, 0, -1)
-            return Path.Geom.cmdsForEdge(Part.Edge(Part.Circle(center, norm, radius)))[0]
+            return Path.Geom.cmdsForEdge(Part.Edge(Part.Circle(center, norm, radius)))
 
         def cmd(g, end, off):
             return Path.Command(
@@ -555,9 +598,12 @@ class TestPathGeom(PathTestBase):
         center = Vector(10, 10, 0)
         radius = 5
 
-        self.assertCommandEqual(
-            cmds(center, radius), cmd("G3", Vector(15, 10, 0), Vector(-5, 0, 0))
-        )
+        cmd0 = cmd("G3", Vector(center.x - radius, center.y, center.z), Vector(-radius, 0, 0))
+        cmd1 = cmd("G3", Vector(center.x + radius, center.y, center.z), Vector(radius, 0, 0))
+
+        result = cmds(center, radius)
+        self.assertCommandEqual(result[0], cmd0)
+        self.assertCommandEqual(result[1], cmd1)
 
     def test42(self):
         """Verify ellipsis results in a proper segmentation of G1 commands."""

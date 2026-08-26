@@ -82,7 +82,10 @@ class ViewProvider(object):
             callback(self.obj, self.vobj, edit)
 
     def setEdit(self, vobj=None, mode=0):
-        if 0 == mode:
+        if 1 == mode:
+            FreeCADGui.runCommand("Std_TransformManip")
+            return True
+        elif 0 == mode:
             self._onEditCallback(True)
         elif 1 == mode:
             FreeCADGui.runCommand("Std_TransformManip")
