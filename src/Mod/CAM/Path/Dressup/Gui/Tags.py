@@ -27,7 +27,7 @@ import FreeCADGui
 import Path
 import Path.Base.Gui.GetPoint as PathGetPoint
 import Path.Dressup.Tags as PathDressupTag
-import PathScripts.PathUtils as PathUtils
+from PathScripts import PathUtils
 import Path.Dressup.Utils as PathDressup
 
 if False:
@@ -81,7 +81,7 @@ class PathDressupTagTaskPanel:
     def clicked(self, button):
         if button == QtGui.QDialogButtonBox.Apply:
             self.getFields()
-            self.obj.Proxy.execute(self.obj)
+            self.obj.Proxy.doExecute(self.obj, False)
             self.isDirty = False
 
     def modifyStandardButtons(self, buttonBox):
@@ -101,21 +101,21 @@ class PathDressupTagTaskPanel:
         self.cleanup(True)
         if self.isDirty:
             self.getFields()
-            FreeCAD.ActiveDocument.recompute()
+            # FreeCAD.ActiveDocument.recompute()
 
     def cleanup(self, gui):
         self.viewProvider.clearTaskPanel()
         if gui:
             FreeCADGui.ActiveDocument.resetEdit()
             FreeCADGui.Control.closeDialog()
-            FreeCAD.ActiveDocument.recompute()
+            # FreeCAD.ActiveDocument.recompute()
             if self.jvoVisible:
                 self.jvo.show()
 
     def getTags(self, includeCurrent):
         tags = []
         index = self.form.lwTags.currentRow()
-        for i in range(0, self.form.lwTags.count()):
+        for i in range(self.form.lwTags.count()):
             item = self.form.lwTags.item(i)
             enabled = item.checkState() == QtCore.Qt.CheckState.Checked
             x = item.data(self.DataX)
@@ -171,11 +171,9 @@ class PathDressupTagTaskPanel:
         self.form.lwTags.blockSignals(True)
         self.form.lwTags.clear()
         for i, pos in enumerate(self.Positions):
-            lbl = "%d: (%s, %s)" % (
-                i,
-                FreeCAD.Units.Quantity(pos.x, FreeCAD.Units.Length).UserString,
-                FreeCAD.Units.Quantity(pos.y, FreeCAD.Units.Length).UserString,
-            )
+            posX = FreeCAD.Units.Quantity(pos.x, FreeCAD.Units.Length).UserString
+            posY = FreeCAD.Units.Quantity(pos.y, FreeCAD.Units.Length).UserString
+            lbl = f"{i}: ({posX}, {posY})"
             item = QtGui.QListWidgetItem(lbl)
             item.setData(self.DataX, pos.x)
             item.setData(self.DataY, pos.y)
@@ -204,7 +202,7 @@ class PathDressupTagTaskPanel:
     def generateNewTags(self):
         self.getFields()
         if not self.obj.Proxy.generateTags(self.obj):
-            self.obj.Proxy.execute(self.obj)
+            self.obj.Proxy.doExecute(self.obj, False)
         self.Positions = self.obj.Positions
         self.Disabled = self.obj.Disabled
         self.updateTagsView()
@@ -221,7 +219,7 @@ class PathDressupTagTaskPanel:
         if r:
             index = form.uiToolController.currentIndex()
             if not self.obj.Proxy.copyTags(self.obj, tags[index]):
-                self.obj.Proxy.execute(self.obj)
+                self.obj.Proxy.doExecute(self.obj, False)
             self.Positions = self.obj.Positions
             self.Disabled = self.obj.Disabled
             self.updateTagsView()
@@ -266,17 +264,19 @@ class PathDressupTagTaskPanel:
 
     def addNewTagAt(self, point, obj):
         if point and obj and self.obj.Proxy.pointIsOnPath(self.obj, point):
-            Path.Log.info("addNewTagAt(%.2f, %.2f)" % (point.x, point.y))
+            Path.Log.info(f"addNewTagAt({point.x:.2f}, {point.y:.2f})")
             self.Positions.append(FreeCAD.Vector(point.x, point.y, 0))
             self.updateTagsView()
         else:
-            Path.Log.notice("ignore new tag at %s (obj=%s, on-path=%d" % (point, obj, 0))
+            Path.Log.notice(f"ignore new tag at {point} (obj={obj}, on-path=0")
 
     def addNewTag(self):
+        print("addNewTag")
         self.tags = self.getTags(True)
         self.getPoint.getPoint(self.addNewTagAt)
 
     def editTagAt(self, point, obj):
+        print("editTagAt", point)
         Path.Log.track(point, obj)
         if point and self.obj.Proxy.pointIsOnPath(self.obj, point):
             tags = []
@@ -288,6 +288,7 @@ class PathDressupTagTaskPanel:
             self.updateTagsViewWith(tags)
 
     def editTag(self, item):
+        print("editTag", item)
         if item:
             self.tags = self.getTags(True)
             self.editItem = item.data(self.DataID)
@@ -499,12 +500,15 @@ class PathDressupTagViewProvider:
         #    tag.purgeTouched()
 
     def setEdit(self, vobj, mode=0):
-        panel = PathDressupTagTaskPanel(vobj.Object, self)
-        self.setupTaskPanel(panel)
+        if mode == 1:
+            FreeCADGui.runCommand("Std_TransformManip")
+        elif mode == 0:
+            panel = PathDressupTagTaskPanel(vobj.Object, self)
+            self.setupTaskPanel(panel)
         return True
 
     def unsetEdit(self, vobj, mode):
-        if hasattr(self, "panel") and self.panel:
+        if mode == 0 and hasattr(self, "panel") and self.panel:
             self.panel.abort()
 
     def setupTaskPanel(self, panel):
@@ -541,9 +545,7 @@ class PathDressupTagViewProvider:
         return -1
 
     def allow(self, doc, obj, sub):
-        if obj == self.obj:
-            return True
-        return False
+        return obj == self.obj
 
     def addSelection(self, doc, obj, sub, point):
         Path.Log.track(doc, obj, sub, point)

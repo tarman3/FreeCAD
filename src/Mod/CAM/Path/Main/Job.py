@@ -23,6 +23,8 @@
 
 from Path.Op.Util import getCycleTimeEstimate
 from Path.Post.Processor import PostProcessorFactory  # PostProcessor,
+from PathScripts.PathUtils import getOperations
+from PathScripts.PathUtils import getPathWithPlacement
 from PySide import QtCore
 from PySide.QtCore import QT_TRANSLATE_NOOP
 import FreeCAD
@@ -232,6 +234,12 @@ class ObjectJob:
             ),
         )
         obj.PostProcessorPropertyOverrides = "{}"
+        obj.addProperty(
+            "App::PropertyBool",
+            "ShowCombinedPath",
+            "Path",
+            QT_TRANSLATE_NOOP("App::Property", "Show combined path from all operations"),
+        )
 
         obj.Fixtures = ["G54"]
 
@@ -420,8 +428,7 @@ class ObjectJob:
         if getattr(obj, "Operations", None):
             # the first to tear down are the ops, they depend on other resources
             Path.Log.debug("taking down ops: %s" % [o.Name for o in self.allOperations()])
-            while obj.Operations.Group:
-                op = obj.Operations.Group[0]
+            for op in getOperations(obj):
                 if (
                     not op.ViewObject
                     or not hasattr(op.ViewObject.Proxy, "onDelete")
@@ -429,6 +436,9 @@ class ObjectJob:
                 ):
                     PathUtil.clearExpressionEngine(op)
                     doc.removeObject(op.Name)
+            for el in obj.Operations.Group:
+                doc.removeObject(el.Name)
+
             obj.Operations.Group = []
             doc.removeObject(obj.Operations.Name)
             obj.Operations = None
@@ -601,6 +611,14 @@ class ObjectJob:
             )
             obj.PostProcessorPropertyOverrides = "{}"
 
+        if not hasattr(obj, "ShowCombinedPath"):
+            obj.addProperty(
+                "App::PropertyBool",
+                "ShowCombinedPath",
+                "Path",
+                QT_TRANSLATE_NOOP("App::Property", "Show combined path from all operations"),
+            )
+
         for n in self.propertyEnumerations():
             setattr(obj, n[0], n[1])
 
@@ -759,8 +777,12 @@ class ObjectJob:
         if not obj.GeometryTolerance:
             obj.GeometryTolerance = Path.Preferences.defaultGeometryTolerance()
 
+        obj.Path = Path.Path()
         if getattr(obj, "Operations", None):
-            # obj.Path = obj.Operations.Path
+            if obj.ShowCombinedPath:
+                for op in getOperations(obj):
+                    op.Visibility = False
+                    obj.Path.addCommands(getPathWithPlacement(op).Commands)
             self.getCycleTime()
             if hasattr(obj, "PathChanged"):
                 obj.PathChanged = True
@@ -768,7 +790,7 @@ class ObjectJob:
     def getCycleTime(self):
         seconds = 0
         errorStr = ""
-        for op in self.obj.Operations.Group:
+        for op in getOperations(self.obj):
             result = getCycleTimeEstimate(op, formatted=False)
             if isinstance(result, (int, float)):
                 seconds += result
@@ -778,20 +800,31 @@ class ObjectJob:
         self.obj.CycleTime = f"{timeStr}{errorStr}"
 
     def addOperation(self, op, before=None, removeBefore=False):
-        group = self.obj.Operations.Group
-        if op not in group:
-            if before:
-                try:
-                    group.insert(group.index(before), op)
-                    if removeBefore:
-                        group.remove(before)
-                except Exception as e:
-                    Path.Log.error(e)
-                    group.append(op)
-            else:
-                group.append(op)
-            self.obj.Operations.Group = group
-            # op.Path.Center = self.obj.Operations.Path.Center
+        def getGroup(op):
+            for candidate in op.InList:
+                if hasattr(candidate, "Group"):
+                    return candidate
+            return self.job.Operations
+
+        if op in getOperations(self.obj):
+            return
+
+        if before:
+            objGroup = getGroup(before)
+            groupList = objGroup.Group
+            try:
+                groupList.insert(groupList.index(before), op)
+                if removeBefore:
+                    groupList.remove(before)
+            except Exception as e:
+                Path.Log.error(e)
+                groupList.append(op)
+            objGroup.Group = groupList
+        else:
+            groupList = self.obj.Operations.Group
+            groupList.append(op)
+            self.obj.Operations.Group = groupList
+        # op.Path.Center = self.obj.Operations.Path.Center
 
     def getMachine(self):
         """getMachine() ... returns an instantiated Machine object for this job.
@@ -860,7 +893,7 @@ class ObjectJob:
                         collectBaseOps(sub)
 
         if getattr(self.obj, "Operations", None) and getattr(self.obj.Operations, "Group", None):
-            for op in self.obj.Operations.Group:
+            for op in getOperations(self.obj):
                 collectBaseOps(op)
 
         return ops
@@ -924,17 +957,6 @@ class ObjectJob:
     def isBaseCandidate(cls, obj):
         """Answer true if the given object can be used as a Base for a job."""
         return PathUtil.isValidBaseObject(obj)
-
-
-def Instances():
-    """Instances() ... Return all Jobs in the current active document."""
-    if FreeCAD.ActiveDocument:
-        return [
-            job
-            for job in FreeCAD.ActiveDocument.Objects
-            if hasattr(job, "Proxy") and isinstance(job.Proxy, ObjectJob)
-        ]
-    return []
 
 
 def Create(name, base, templateFile=None):
