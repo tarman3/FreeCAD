@@ -21,18 +21,11 @@
 
 from PySide.QtCore import QT_TRANSLATE_NOOP
 import FreeCAD
+import Part
 import Path
 import Path.Op.Base as PathOp
 import Path.Op.PocketBase as PathPocketBase
-
-# lazily loaded modules
-from lazy_loader.lazy_loader import LazyLoader
-
-Part = LazyLoader("Part", globals(), "Part")
-TechDraw = LazyLoader("TechDraw", globals(), "TechDraw")
-math = LazyLoader("math", globals(), "math")
-PathUtils = LazyLoader("PathScripts.PathUtils", globals(), "PathScripts.PathUtils")
-FeatureExtensions = LazyLoader("Path.Op.FeatureExtension", globals(), "Path.Op.FeatureExtension")
+from PathScripts import PathUtils
 
 translate = FreeCAD.Qt.translate
 
@@ -55,15 +48,15 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
     def areaOpFeatures(self, obj):
         return (
             super(self.__class__, self).areaOpFeatures(obj)
-            | PathOp.FeatureLocations
             | PathOp.FeatureBaseEdges
+            | PathOp.FeatureExtension
         )
 
-    def removeHoles(self, solids, face):
+    def removeHoles(self, solids, face, tol):
         """Create face from outer wire and remove collisions with solids"""
         outer_wire = face.OuterWire
         outer_face = Part.Face(outer_wire)
-        translate_dist = face.BoundBox.ZLength + self.tol
+        translate_dist = face.BoundBox.ZLength + tol
         outer_face.translate(FreeCAD.Vector(0, 0, translate_dist))
         new_face = outer_face.cut(solids)
         new_face.translate(FreeCAD.Vector(0, 0, -translate_dist))
@@ -79,8 +72,6 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
                 "Pocket",
                 QT_TRANSLATE_NOOP("App::Property", "Uses the outline of the base geometry."),
             )
-
-        FeatureExtensions.initialize_properties(obj)
         if not hasattr(obj, "CloseOpenPaths"):
             obj.addProperty(
                 "App::PropertyBool",
@@ -106,22 +97,15 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
         obj.Angle = 45
         obj.setEditorMode("Angle", 2)  # hide for default Offset pattern
         obj.UseOutline = False
-        FeatureExtensions.set_default_property_values(obj, job)
+        obj.FinishingPasses = (0, 0, 999999, 1)
 
     def areaOpShapes(self, obj):
         """areaOpShapes(obj) ... return shapes representing the solids to be removed."""
         Path.Log.track()
         # self.isDebug = True if Path.Log.getLevel(Path.Log.thisModule()) == 4 else False
         self.removalshapes = []
-        avoidFeatures = list()
-        self.tol = self.job.GeometryTolerance.Value or 0.01
+        tol = self.job.GeometryTolerance.Value or 0.01
         solids = [base.Shape for base in self.model if base.Shape.Faces]
-
-        # Get extensions and identify faces to avoid
-        extensions = FeatureExtensions.getExtensions(obj)
-        for e in extensions:
-            if e.avoid:
-                avoidFeatures.append(e.feature)
 
         if obj.Base:
             Path.Log.debug("base items exist.  Processing...")
@@ -130,9 +114,6 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
             self.edges = []
             for base, subList in self.baseShapes(obj):
                 for sub in subList:
-                    if sub in avoidFeatures:
-                        # skip this sub shape
-                        continue
                     if "Edge" in sub and self.classifySubEdge(base, sub):
                         # edge added to list
                         continue
@@ -167,19 +148,13 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
             Path.Log.debug("UseOutline: {}".format(obj.UseOutline))
             Path.Log.debug("self.horiz: {}".format(self.horiz))
             if obj.UseOutline and self.horiz:
-                self.horiz = [self.removeHoles(solids, face) for face in self.horiz]
+                self.horiz = [self.removeHoles(solids, face, tol) for face in self.horiz]
 
-            # Add faces for extensions
-            # Note: Extension faces don't have a parent base object, so we append them directly
-            self.exts = []
-            for ext in extensions:
-                if not ext.avoid:
-                    wire = ext.getWire()
-                    if wire:
-                        faces = ext.getExtensionFaces(wire)
-                        for f in faces:
-                            self.horiz.append(f)
-                            self.exts.append(f)
+            # Expand selected regions with extensions
+            if obj.ExtensionOffset:
+                self.horiz = PathUtils.getExtendedFaces(
+                    self.horiz, obj.ExtensionOffset.Value, solids, tol=tol
+                )
 
             # check all faces and see if they are touching/overlapping and combine and simplify
             keepOrder = getattr(obj, "SortingMode", None) == "Manual"
@@ -190,25 +165,10 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
                 h.translate(FreeCAD.Vector(0.0, 0.0, obj.FinalDepth.Value - h.BoundBox.ZMin))
 
             # extrude all faces up to StartDepth and those are the removal shapes
-            extent = FreeCAD.Vector(0, 0, obj.StartDepth.Value - obj.FinalDepth.Value)
+            extent = FreeCAD.Vector(0, 0, max(obj.StartDepth.Value - obj.FinalDepth.Value, 1))
             self.removalshapes = [
                 (face.removeSplitter().extrude(extent), False) for face in self.horizontal
             ]
-
-        else:  # process the job base object as a whole
-            Path.Log.debug("processing the whole job base object")
-            self.outlines = [
-                Part.Face(TechDraw.findShapeOutline(base.Shape, 1, FreeCAD.Vector(0, 0, 1)))
-                for base in self.model
-            ]
-            stockBB = self.stock.Shape.BoundBox
-
-            self.bodies = []
-            for outline in self.outlines:
-                outline.translate(FreeCAD.Vector(0, 0, stockBB.ZMin - 1))
-                body = outline.extrude(FreeCAD.Vector(0, 0, stockBB.ZLength + 2))
-                self.bodies.append(body)
-                self.removalshapes.append((self.stock.Shape.cut(body), False))
 
         # Tessellate all working faces
         # for (shape, hole) in self.removalshapes:
@@ -365,11 +325,12 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
 
 def SetupProperties():
     setup = PathPocketBase.SetupProperties()  # Add properties from PocketBase module
-    setup.extend(FeatureExtensions.SetupProperties())  # Add properties from Extensions Feature
 
     # Add properties initialized here in PocketShape
     setup.append("UseOutline")
     setup.append("CloseOpenPaths")
+    setup.append("ExtensionOffset")
+
     return setup
 
 

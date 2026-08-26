@@ -27,7 +27,6 @@ from FreeCAD import Vector
 from PySide import QtCore
 import Part
 import Path
-import Path.Main.Job as PathJob
 import math
 from numpy import linspace
 import tsp_solver
@@ -404,8 +403,7 @@ def getOffsetArea(
     fcShape,
     offset,
     removeHoles=False,
-    # Default: XY plane
-    plane=Part.makeCircle(10),
+    plane=None,
     tolerance=1e-4,
 ):
     """Make an offset area of a shape, projected onto a plane.
@@ -414,6 +412,9 @@ def getOffsetArea(
     based on notes by @sliptonic at this webpage:
     https://github.com/sliptonic/FreeCAD/wiki/PathArea-notes."""
     Path.Log.debug("getOffsetArea()")
+
+    if plane is None:  # default plane XY
+        Part.makeCircle(10)
 
     areaParams = {}
     areaParams["Offset"] = offset
@@ -438,6 +439,41 @@ def getOffsetArea(
     if not offsetShape.Faces:
         return False
     return offsetShape
+
+
+def getExtendedFaces(faces, offset, solids, cut_original=False, tol=0.01):
+    """getExtended(faces, offset, solids)
+    Get offset from face(s) and cut solids from it
+    Cut solids also from original face(s) if cut_original is True
+    Return list of original face(s) and extensions
+    """
+    extensions = []
+    if isinstance(faces, Part.Face):
+        faces = [faces]
+    for face in faces:
+        if cut_original:
+            cface = face.copy()
+            translate_dist = face.BoundBox.ZLength + Path.Geom.Tolerance
+            cface.translate(FreeCAD.Vector(0, 0, translate_dist))
+            cface = cface.cut(solids)
+            cface.translate(FreeCAD.Vector(0, 0, -translate_dist))
+            extensions.extend(cface.Faces)
+        else:
+            extensions.extend(face.Faces)
+        if not offset:
+            continue
+        plane = makeWorkplane(face)
+        oface = getOffsetArea(face, offset, plane=plane, tolerance=tol)
+        if not oface:
+            Path.Log.warning("Extension error: getOffsetArea() failed")
+            continue
+        ext = oface.cut(solids)
+        if ext.isNull() or not ext.Faces:
+            Path.Log.warning("Extension error: cut() failed")
+            continue
+        extensions.extend(ext.Faces)  # ext can be a Face or Shell
+
+    return extensions
 
 
 def reverseEdge(e):
@@ -506,7 +542,9 @@ def findToolController(obj, proxy, name=None):
 def findParentJob(obj):
     """retrieves a parent job object for an operation or other Path object"""
     Path.Log.track()
-    if hasattr(obj, "Proxy") and isinstance(obj.Proxy, PathJob.ObjectJob):
+
+    jobModule = "Path.Main.Job"
+    if getattr(obj, "Proxy", None) and obj.Proxy.__module__ == jobModule:
         return obj
 
     # we need to traverse the document tree in reverse order:
@@ -519,8 +557,8 @@ def findParentJob(obj):
 
     for i in obj.InList:
         if (
-            hasattr(i, "Proxy")
-            and isinstance(i.Proxy, PathJob.ObjectJob)
+            getattr(i, "Proxy", None)
+            and i.Proxy.__module__ == jobModule
             and obj in [i.Operations, i.Model, i.Stock, i.SetupSheet, i.Tools]
         ):
             return i
@@ -535,11 +573,22 @@ def findParentJob(obj):
     return None
 
 
+def jobInstances():
+    """jobInstances() ... Return all Jobs in the current active document."""
+    if doc := FreeCAD.ActiveDocument:
+        return [
+            obj
+            for obj in doc.Objects
+            if getattr(obj, "Proxy", None) and obj.Proxy.__module__ == "Path.Main.Job"
+        ]
+    return []
+
+
 def GetJobs(jobname=None):
     """returns all jobs in the current document.  If name is given, returns that job"""
     if jobname:
-        return [job for job in PathJob.Instances() if job.Name == jobname]
-    return PathJob.Instances()
+        return [job for job in jobInstances() if job.Name == jobname]
+    return jobInstances()
 
 
 def addToJob(obj, jobname=None):
@@ -568,6 +617,31 @@ def addToJob(obj, jobname=None):
     if obj and job:
         job.Proxy.addOperation(obj)
     return job
+
+
+def getOperations(obj, addGroups=False):
+    """getOperations() ... returns all operations from job or group, includes sub groups"""
+
+    def getOpsFromGroup(group):
+        operations = []
+        for candidate in group.Group:
+            if hasattr(candidate, "Path"):
+                operations.append(candidate)
+            elif hasattr(candidate, "Group"):
+                if addGroups:
+                    operations.append(candidate)
+                operations.extend(getOpsFromGroup(candidate))
+        return operations
+
+    if getattr(obj, "Proxy", None) and obj.Proxy.__module__ == "Path.Main.Job":
+        group = getattr(obj, "Operations", None)
+    elif hasattr(obj, "Group"):
+        group = obj
+    elif getattr(obj, "__module__", None) == "CAMTests.PostTestMocks":
+        return obj.Operations.Group  # needed for tests with mocks objects
+    else:
+        group = None
+    return getOpsFromGroup(group) if group else []
 
 
 def sort_locations(locations, keys, attractors=None):
@@ -668,19 +742,18 @@ def guessDepths(objshape, subs=None):
         fbb = subobj.BoundBox  # feature boundbox
         start = fbb.ZMax
 
-        if fbb.ZMax == fbb.ZMin and fbb.ZMax == bb.ZMax:  # top face
-            final = fbb.ZMin
-        elif fbb.ZMax > fbb.ZMin and fbb.ZMax == bb.ZMax:  # vertical face, full cut
-            final = fbb.ZMin
-        elif fbb.ZMax > fbb.ZMin and fbb.ZMin > bb.ZMin:  # internal vertical wall
-            final = fbb.ZMin
-        elif fbb.ZMax == fbb.ZMin and fbb.ZMax > bb.ZMin:  # face/shelf
+        if (
+            (fbb.ZMax == fbb.ZMin and fbb.ZMax == bb.ZMax)  # top face
+            or (fbb.ZMax > fbb.ZMin and fbb.ZMax == bb.ZMax)  # vertical face, full cut
+            or (fbb.ZMax > fbb.ZMin and fbb.ZMin > bb.ZMin)  # internal vertical wall
+            or (fbb.ZMax == fbb.ZMin and fbb.ZMax > bb.ZMin)  # face/shelf
+        ):
             final = fbb.ZMin
 
     return depth_params(clearance, safe, start, 1.0, 0.0, final, user_depths=None, equalstep=False)
 
 
-class depth_params(object):
+class depth_params:
     """calculates the intermediate depth values for various operations given the starting, ending, and stepdown parameters
     (self, clearance_height, safe_height, start_depth, step_down, z_finish_depth, final_depth, [user_depths=None], equalstep=False)
 
