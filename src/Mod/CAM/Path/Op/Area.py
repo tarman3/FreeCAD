@@ -94,6 +94,16 @@ class ObjectOp(PathOp.ObjectOp):
             "Path",
             QT_TRANSLATE_NOOP("App::Property", "Split Arcs into discrete segments"),
         )
+        obj.addProperty(
+            "App::PropertyEnumeration",
+            "HandleMultipleFeatures",
+            "Path",
+            QT_TRANSLATE_NOOP(
+                "App::Property",
+                "Choose how to process multiple Base Geometry features.",
+            ),
+        )
+        obj.HandleMultipleFeatures = ("Individually", "Collectively")
 
         self.initAreaOp(obj)
 
@@ -145,6 +155,17 @@ class ObjectOp(PathOp.ObjectOp):
                 "Path",
                 QT_TRANSLATE_NOOP("App::Property", "Split Arcs into discrete segments"),
             )
+        if not hasattr(obj, "HandleMultipleFeatures"):
+            obj.addProperty(
+                "App::PropertyEnumeration",
+                "HandleMultipleFeatures",
+                "Path",
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Choose how to process multiple Base Geometry features.",
+                ),
+            )
+        obj.HandleMultipleFeatures = ("Individually", "Collectively")
 
         self.areaOpOnDocumentRestored(obj)
 
@@ -433,6 +454,8 @@ class ObjectOp(PathOp.ObjectOp):
 
                     cmds.extend(pp.Commands)
                     if doRamp:  # generate ramp entry
+                        if Path.Geom.isRoughly(cmds[-1].z, obj.FinalDepth.Value):
+                            cmds.append(Path.Command("G0", {"Z": obj.SafeHeight.Value}))
                         rampParams["commands"] = cmds
                         cmds = RampEntry(**rampParams).generate()
 
@@ -531,50 +554,43 @@ class ObjectOp(PathOp.ObjectOp):
         # Initiate depthparams and calculate operation heights for operation
         self.depthparams = self._customDepthParams(obj, obj.StartDepth.Value, obj.FinalDepth.Value)
 
-        shapes = self.areaOpShapes(obj)
+        shapeTups = self.areaOpShapes(obj)
 
         # Sorting shapes
         if (
-            len(shapes) > 1
-            and getattr(obj, "SortingMode", None) != "Manual"
-            and getattr(obj, "HandleMultipleFeatures", False) != "Collectively"
+            len(shapeTups) > 1
+            and obj.SortingMode != "Manual"
+            and obj.HandleMultipleFeatures != "Collectively"
         ):
             locations = []
-            for s in shapes:
-                shp = s[0]
-                locations.append({"x": shp.BoundBox.XMax, "y": shp.BoundBox.YMax, "shape": s})
+            for tup in shapeTups:
+                shp = tup[0]
+                locations.append({"x": shp.BoundBox.XMax, "y": shp.BoundBox.YMax, "tup": tup})
             locations = PathUtils.sort_locations(locations, ["x", "y"])
-            shapes = [j["shape"] for j in locations]
+            shapeTups = [j["tup"] for j in locations]
 
         # Adjust tuples length received from other PathWB tools/operations
-        rshapes = []
-        for shp in shapes:
-            if len(shp) == 2:
-                rshapes.append((shp[0], shp[1], "otherOp"))
-            elif len(shp) == 3 and isinstance(shp[1], list):  # unpack open wires
-                rshapes.extend((s, False, "OpenEdge") for s in shp[1])
-            else:
-                rshapes.append(shp)
-
-        shapes = rshapes
+        for i in range(len(shapeTups)):
+            if len(shapeTups[i]) == 2:
+                shapeTups[i] = (shapeTups[i][0], shapeTups[i][1], "otherOp")
 
         # Combine similar tasks for Collectively HandleMultipleFeatures
         if (
-            obj.Proxy.__module__ == "Path.Op.Profile"
-            and len(shapes) > 1
-            and getattr(obj, "HandleMultipleFeatures", False) == "Collectively"
+            len(shapeTups) > 1
+            and obj.HandleMultipleFeatures == "Collectively"
+            and obj.Proxy.__module__ != "Path.Op.Pocket"  # Pocket has own process for Collectively
         ):
-            keys = {(iH, desc) for _, iH, desc in shapes}
+            keys = {(iH, desc) for _, iH, desc in shapeTups}
             collectively = []
             for key in keys:
                 combine = []
-                for sh, iH, desc in shapes:
+                for sh, iH, desc in shapeTups:
                     if (iH, desc) == key:
                         combine.append(sh)
                 fc = Part.makeCompound(combine)
                 collectively.append((fc, key[0], key[1]))
 
-            shapes = collectively
+            shapeTups = collectively
 
         # Build linking kwargs for collision-aware between-feature transitions
         self.initmove = True
@@ -582,9 +598,9 @@ class ObjectOp(PathOp.ObjectOp):
         if PathOp.FeatureLinking & self.opFeatures(obj):
             linkingArgs = linking.get_linking_args(obj, self.job)
 
-        for shape, isHole, sub in shapes:
+        for shape, isHole, desc in shapeTups:
             try:
-                if sub == "OpenEdge":
+                if desc == "OpenEdge":
                     ppCmds = self._buildProfileOpenEdges(obj, shape, linkingArgs)
                 else:
                     ppCmds = self._buildPathArea(obj, shape, isHole, linkingArgs)
