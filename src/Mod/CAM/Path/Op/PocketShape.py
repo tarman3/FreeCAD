@@ -1,25 +1,23 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2017 sliptonic <shopinthewoods@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
 
-# ***************************************************************************
-# *   Copyright (c) 2017 sliptonic <shopinthewoods@gmail.com>               *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 from PySide.QtCore import QT_TRANSLATE_NOOP
 import FreeCAD
@@ -34,7 +32,6 @@ Part = LazyLoader("Part", globals(), "Part")
 TechDraw = LazyLoader("TechDraw", globals(), "TechDraw")
 math = LazyLoader("math", globals(), "math")
 PathUtils = LazyLoader("PathScripts.PathUtils", globals(), "PathScripts.PathUtils")
-FeatureExtensions = LazyLoader("Path.Op.FeatureExtension", globals(), "Path.Op.FeatureExtension")
 
 translate = FreeCAD.Qt.translate
 
@@ -57,8 +54,8 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
     def areaOpFeatures(self, obj):
         return (
             super(self.__class__, self).areaOpFeatures(obj)
-            | PathOp.FeatureLocations
             | PathOp.FeatureBaseEdges
+            | PathOp.FeatureExtension
         )
 
     def removeHoles(self, solids, face):
@@ -81,8 +78,6 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
                 "Pocket",
                 QT_TRANSLATE_NOOP("App::Property", "Uses the outline of the base geometry."),
             )
-
-        FeatureExtensions.initialize_properties(obj)
         if not hasattr(obj, "CloseOpenPaths"):
             obj.addProperty(
                 "App::PropertyBool",
@@ -108,22 +103,15 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
         obj.Angle = 45
         obj.setEditorMode("Angle", 2)  # hide for default Offset pattern
         obj.UseOutline = False
-        FeatureExtensions.set_default_property_values(obj, job)
+        obj.FinishingPasses = (0, 0, 999999, 1)
 
     def areaOpShapes(self, obj):
         """areaOpShapes(obj) ... return shapes representing the solids to be removed."""
         Path.Log.track()
         # self.isDebug = True if Path.Log.getLevel(Path.Log.thisModule()) == 4 else False
         self.removalshapes = []
-        avoidFeatures = list()
         self.tol = self.job.GeometryTolerance.Value or 0.01
         solids = [base.Shape for base in self.model if base.Shape.Faces]
-
-        # Get extensions and identify faces to avoid
-        extensions = FeatureExtensions.getExtensions(obj)
-        for e in extensions:
-            if e.avoid:
-                avoidFeatures.append(e.feature)
 
         if obj.Base:
             Path.Log.debug("base items exist.  Processing...")
@@ -132,9 +120,6 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
             self.edges = []
             for base, subList in self.baseShapes(obj):
                 for sub in subList:
-                    if sub in avoidFeatures:
-                        # skip this sub shape
-                        continue
                     if "Edge" in sub and self.classifySubEdge(base, sub):
                         # edge added to list
                         continue
@@ -158,7 +143,8 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
                         Path.Log.error(
                             translate(
                                 "Pocket_Shape",
-                                "Pocke_Shape can not process open wire.\nYou can enable feature Close Open Path",
+                                "Pocket_Shape can not process open wire."
+                                "\nYou can enable feature Close Open Path",
                             )
                         )
                         continue
@@ -170,17 +156,11 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
             if obj.UseOutline and self.horiz:
                 self.horiz = [self.removeHoles(solids, face) for face in self.horiz]
 
-            # Add faces for extensions
-            # Note: Extension faces don't have a parent base object, so we append them directly
-            self.exts = []
-            for ext in extensions:
-                if not ext.avoid:
-                    wire = ext.getWire()
-                    if wire:
-                        faces = ext.getExtensionFaces(wire)
-                        for f in faces:
-                            self.horiz.append(f)
-                            self.exts.append(f)
+            # Expand selected regions with extensions
+            if obj.ExtensionOffset:
+                self.horiz = PathUtils.getExtendedFaces(
+                    self.horiz, obj.ExtensionOffset.Value, solids, tol=self.tol
+                )
 
             # check all faces and see if they are touching/overlapping and combine and simplify
             keepOrder = getattr(obj, "SortingMode", None) == "Manual"
@@ -324,16 +304,23 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
                             endFaces.append(face)
 
                     # Add helper edge and try getEnvelope again
-                    if len(endFaces) == 2:  # should be only two end faces
+                    points = None
+                    if len(endFaces) == 1:
+                        face = endFaces[0]
+                        if slc := face.slice(FreeCAD.Vector(0, 0, 1), face.BoundBox.Center.z):
+                            wire = slc[0]
+                            points = wire.OrderedVertexes[0].Point, wire.OrderedVertexes[-1].Point
+                    elif len(endFaces) == 2:
                         points = []  # farest points which should be connected
                         for face in endFaces:
                             candidates.remove(face)
                             comp = Part.Compound(candidates)
                             tPoint = face.distToShape(comp)[1][0][0]  # face touched compound here
                             ps = [(v.Point.distanceToPoint(tPoint), v.Point) for v in face.Vertexes]
-                            p = sorted(ps, key=lambda tup: tup[0])[-1][1]  # farest point
+                            p = max(ps, key=lambda tup: tup[0])[1]  # farest point
                             points.append(p)
-
+                            candidates.append(face)
+                    if points:
                         edge = Part.makeLine(*points)
                         newComp = Part.Compound([vertCon, edge])
                         try:
@@ -359,11 +346,12 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
 
 def SetupProperties():
     setup = PathPocketBase.SetupProperties()  # Add properties from PocketBase module
-    setup.extend(FeatureExtensions.SetupProperties())  # Add properties from Extensions Feature
 
     # Add properties initialized here in PocketShape
     setup.append("UseOutline")
     setup.append("CloseOpenPaths")
+    setup.append("ExtensionOffset")
+
     return setup
 
 

@@ -1076,6 +1076,15 @@ class PostProcessor:
 
         return gcodeheader
 
+    def _expand_placement(self, postables):
+        """Apply placement to path if needed."""
+        from PathScripts.PathUtils import getPathWithPlacement
+
+        for section_name, sublist in postables:
+            for item in sublist:
+                if item.path and hasattr(item, "Placement"):
+                    item.path = getPathWithPlacement(item)
+
     def _add_line_numbers(self, postables):
         """Add N word if we are line-numbering
         Subclasses are expected to render N as line-number (if present)
@@ -2119,6 +2128,7 @@ class PostProcessor:
         # postables = self._expand_pre_job(postables) # FIXME: need an item for a job, handled by _expand_prefix for now
         postables = self._expand_pre_item(postables)
 
+        self._expand_placement(postables)
         self._expand_translate_drill_cycles(postables)
         self._expand_canned_cycles(postables)
         self._expand_split_arcs(postables)
@@ -2466,6 +2476,10 @@ class PostProcessor:
                 # Fall back to parent for other drill cycles
                 return super()._convert_drill_cycle(command)
         """
+
+        # Pass through G-code as-is
+        if "as-is" in command.Annotations:
+            return command.Annotations[Constants.ANNOT_AS_IS]
 
         # Validate command is supported
         supported = self.values.get(

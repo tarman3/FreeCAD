@@ -23,6 +23,7 @@ from PySide import QtCore, QtGui
 import FreeCAD
 import FreeCADGui
 import Path
+from Machine.models.machine import MachineFactory
 from PySide.QtCore import QT_TRANSLATE_NOOP
 from PathScripts import PathUtils
 from Path.Base.Util import toolControllerForOp
@@ -32,14 +33,39 @@ translate = FreeCAD.Qt.translate
 
 
 class GCodeEditorDialog(QtGui.QDialog):
-    tool = None
+    """To show Inspect window with specific parameters call
+    Path.Main.Gui.Inspect.GCodeEditorDialog(obj, parent=None, readOnly=True, raw=None, toolVisibility=None).exec()
+    obj: object Path::FeaturePython
+    parent: parent widget (use parent=FreeCADGui.getMainWindow() to darken main FreeCAD window)
+    readOnly: not allows to change text
+    raw: default state of Raw checkbox (convert to prefered units)
+    toolVisibility: default state of Tool visibility checkebox (show tool shape)
+    """
 
-    def __init__(self, PathObj, parent=None, readOnly=True, toolVisibility=None):
+    def __init__(self, PathObj, parent=None, readOnly=True, raw=None, toolVisibility=None):
         self.commands = PathUtils.getPathWithPlacement(PathObj).Commands
         self.tool = getattr(toolControllerForOp(PathObj), "Tool", None)
         self.toolInitVisibility = getattr(self.tool, "Visibility", False)  # keep tool visibility
 
-        QtGui.QDialog.__init__(self, parent or FreeCADGui.getMainWindow())
+        self.units = (
+            "imperial"
+            if FreeCAD.Units.Quantity(1, FreeCAD.Units.Length).getUserPreferred()[2] == "in"
+            else "metric"
+        )
+        job = PathUtils.findParentJob(PathObj)
+        if machine := MachineFactory.get_machine(getattr(job, "Machine", None)):
+            self.units = machine.to_dict()["output"]["units"]
+        self.decAxis = 2
+        self.decFeed = 0
+        if self.units == "imperial":
+            self.decAxis = 3
+            self.decFeed = 1
+        if machine:
+            precision = machine.to_dict()["output"]["precision"]
+            self.decAxis = precision["axis"]
+            self.decFeed = precision["feed"]
+
+        QtGui.QDialog.__init__(self, parent)
         self.setWindowTitle(translate("CAM", "CAM Inspect"))
         layout = QtGui.QVBoxLayout(self)
 
@@ -65,21 +91,23 @@ class GCodeEditorDialog(QtGui.QDialog):
             )  #  make a QPlainTextEdit read-only while keeping the text cursor visible
         layout.addWidget(self.editor)
 
-        # Note
-        lab = QtGui.QLabel()
-        lab.setText(
-            translate(
-                "CAM_Inspect",
-                "<b>Note</b>: This dialog shows path commands in FreeCAD base units (mm/s)."
-                "<br>Values will be converted to the desired unit during post processing.",
-            )
-        )
-        lab.setWordWrap(True)
-        layout.addWidget(lab)
+        self.lab = QtGui.QLabel()  # Note
+        self.lab.setWordWrap(True)
+        layout.addWidget(self.lab)
 
-        bottomFrame = QtGui.QFrame()
+        bottomFrame = QtGui.QFrame()  # buttons and checkboxes at the bottom
         bottomFrame.setLayout(QtGui.QHBoxLayout())
         layout.addWidget(bottomFrame)
+
+        self.chkRaw = QtGui.QCheckBox("Raw")
+        if raw is not None:
+            self.chkRaw.setChecked(raw)
+        self.chkRaw.setToolTip(
+            translate(
+                "CAM_Inspect", "Raw shows original values without rounds and units conversion"
+            )
+        )
+        bottomFrame.layout().addWidget(self.chkRaw)
 
         self.chkTool = QtGui.QCheckBox("Show tool")
         if self.tool is not None:
@@ -101,12 +129,13 @@ class GCodeEditorDialog(QtGui.QDialog):
             QtCore.Qt.Horizontal,
             self,
         )  # add Close button
-        self.buttons.rejected.connect(self.reject)
         bottomFrame.layout().addWidget(self.buttons)
 
+        self.buttons.rejected.connect(self.reject)
         self.editor.cursorPositionChanged.connect(self.highlightpath)
         self.editor.cursorPositionChanged.connect(self.toolPlacement)
         self.finished.connect(self.cleanup)
+        self.chkRaw.checkStateChanged.connect(self.updateText)
         self.chkTool.checkStateChanged.connect(self.toolVisibility)
 
         prefs = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/CAM")
@@ -116,6 +145,8 @@ class GCodeEditorDialog(QtGui.QDialog):
         width = int(prefs.GetString("inspecteditorW", "600"))
         self.move(Xpos, Ypos)
         self.resize(width, height)
+
+        self.updateText()
 
     def cleanup(self):
         """Prepare for exit from Inspect"""
@@ -174,14 +205,46 @@ class GCodeEditorDialog(QtGui.QDialog):
 
         return x, y, z
 
+    def updateText(self):
+        """Update plain text and tool tip"""
+        unitLength = "mm"
+        unitTime = "s"
+        unitsStr = ""
+        if not self.chkRaw.isChecked():
+            unitsStr = f"{self.units}, "
+            unitTime = "min"
+            if self.units == "imperial":
+                unitLength = "in"
 
-def show(obj):
-    "show(obj): shows the G-code data of the given Path object in a dialog"
+        self.lab.setText(
+            translate(
+                "CAM_Inspect",
+                "<b>Caution</b>: This windows shows commands generated by operation."
+                "<br>The final G-code will be created by post processor."
+                "<br><b>Current units</b>: %slength - <b>%s</b>, feed - <b>%s/%s</b>.",
+            )
+            % (unitsStr, unitLength, unitLength, unitTime)
+        )
+        if self.chkRaw.isChecked():
+            self.editor.setPlainText(Path.Path(self.commands).toGCode())
+            return
 
-    if getattr(obj, "Path", None):
-        dia = GCodeEditorDialog(obj)
-        dia.editor.setPlainText(obj.Path.toGCode())
-        dia.exec_()
+        text = ""
+        for cmd in self.commands:
+            text += cmd.Name
+            for key, value in cmd.Parameters.items():
+                if self.units == "imperial":
+                    value /= 25.4
+                if key == "F":
+                    text += f" {key}{round(value * 60, self.decFeed):.{self.decFeed}f}"
+                else:
+                    valueR = round(value, self.decAxis)
+                    if valueR == 0:
+                        valueR = 0.0  # exclude -0.0
+                    text += f" {key}{valueR:.{self.decAxis}f}"
+            text += "\n"
+
+        self.editor.setPlainText(text)
 
 
 class CommandPathInspect:
@@ -219,7 +282,7 @@ class CommandPathInspect:
         # if everything is ok, execute
         FreeCADGui.addModule("Path.Main.Gui.Inspect")
         FreeCADGui.doCommand(f"obj = FreeCAD.ActiveDocument.getObject('{selection[0].Name}')")
-        FreeCADGui.doCommand("Path.Main.Gui.Inspect.show(obj)")
+        FreeCADGui.doCommand("Path.Main.Gui.Inspect.GCodeEditorDialog(obj).exec()")
 
 
 if FreeCAD.GuiUp:

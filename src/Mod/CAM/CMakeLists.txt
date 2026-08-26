@@ -80,6 +80,7 @@ SET(PathPythonDressupGui_SRCS
     Path/Dressup/Gui/LeadInOut.py
     Path/Dressup/Gui/Mirror.py
     Path/Dressup/Gui/Boundary.py
+    Path/Dressup/Gui/PlungeMilling.py
     Path/Dressup/Gui/Preferences.py
     Path/Dressup/Gui/RampEntry.py
     Path/Dressup/Gui/Tags.py
@@ -382,6 +383,7 @@ SET(PathPythonOp_SRCS
     Path/Op/__init__.py
     Path/Op/Adaptive.py
     Path/Op/Area.py
+    Path/Op/Array.py
     Path/Op/Base.py
     Path/Op/CircularHoleBase.py
     Path/Op/Custom.py
@@ -389,7 +391,6 @@ SET(PathPythonOp_SRCS
     Path/Op/Engrave.py
     Path/Op/EngraveBase.py
     Path/Op/Flute.py
-    Path/Op/FeatureExtension.py
     Path/Op/Drilling.py
     Path/Op/Helix.py
     Path/Op/MillFace.py
@@ -422,12 +423,12 @@ SET(PathPythonOpGui_SRCS
     Path/Op/Gui/Deburr.py
     Path/Op/Gui/Drilling.py
     Path/Op/Gui/Engrave.py
-    Path/Op/Gui/FeatureExtension.py
     Path/Op/Gui/Flute.py
     Path/Op/Gui/Helix.py
     Path/Op/Gui/MillFace.py
     Path/Op/Gui/MillFacing.py
     Path/Op/Gui/PathShape.py
+    Path/Op/Gui/PathCompoundTC.py
     Path/Op/Gui/Pocket.py
     Path/Op/Gui/PocketBase.py
     Path/Op/Gui/PocketShape.py
@@ -450,6 +451,7 @@ SET(PathScripts_SRCS
     PathScripts/PathUtilsGui.py
     PathScripts/PathPropertyBag.py
     PathScripts/PathPropertyBagGui.py
+    PathScripts/tsp.py
     PathScripts/__init__.py
 )
 
@@ -465,6 +467,7 @@ SET(PathPythonBaseGenerator_SRCS
     Path/Base/Generator/helix.py
     Path/Base/Generator/leadinout.py
     Path/Base/Generator/linking.py
+    Path/Base/Generator/plunge_milling.py
     Path/Base/Generator/ramp_entry.py
     Path/Base/Generator/rotary_dropcutter.py
     Path/Base/Generator/rotary_parallel.py
@@ -580,6 +583,7 @@ SET(Tests_SRCS
     CAMTests/TestMassoG3Post.py
     CAMTests/TestMarlinPost.py
     CAMTests/TestOpenSBPPost.py
+    CAMTests/TestPathArrayOp.py
     CAMTests/TestPathAdaptive.py
     CAMTests/TestPathCommandAnnotations.py
     CAMTests/TestPathCore.py
@@ -606,6 +610,7 @@ SET(Tests_SRCS
     CAMTests/TestPathLogNew.py
     CAMTests/TestPathOpDeburr.py
     CAMTests/TestPathOpUtil.py
+    CAMTests/TestPathPlungeMillingGenerator.py
     CAMTests/TestPostCore.py
     CAMTests/TestPostProcessor.py
     CAMTests/TestPostOutput.py

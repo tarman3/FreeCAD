@@ -97,13 +97,6 @@ class ObjectTapping(PathCircularHoleBase.ObjectOp):
 
     def initCircularHoleOperation(self, obj):
         """initCircularHoleOperation(obj) ... add tapping specific properties to obj."""
-        # DEPRECATED: This operation is deprecated. Use Drilling operation with Strategy=Tapping instead.
-        Path.Log.warning(
-            "DEPRECATED: The Tapping operation is deprecated and will be removed in a future release. "
-            "Please use the Drilling operation with Strategy set to 'Tapping' instead. "
-            "Existing Tapping operations will continue to work but you cannot create new ones."
-        )
-
         obj.addProperty(
             "App::PropertyFloat",
             "DwellTime",
@@ -280,7 +273,12 @@ class ObjectTapping(PathCircularHoleBase.ObjectOp):
         # machine.addCommand(command)       DLH - Not needed.
 
         # Apply feed rates to commands
-        PathFeedRate.setFeedRate(self.commandlist, obj.ToolController)
+        if hasattr(obj, "HorizFeed") and hasattr(obj, "VertFeed"):
+            PathFeedRate.setFeedRate(
+                self.commandlist, obj.ToolController, obj.HorizFeed, obj.VertFeed
+            )
+        else:
+            PathFeedRate.setFeedRate(self.commandlist, obj.ToolController)
 
     def opSetDefaultValues(self, obj, job):
         """opSetDefaultValues(obj, job) ... set default value for RetractHeight"""
@@ -298,6 +296,13 @@ class ObjectTapping(PathCircularHoleBase.ObjectOp):
             obj.DwellTime = job.SetupSheet.DwellTime
         else:
             obj.DwellTime = 1
+
+    def opOnDocumentRestored(self, obj):
+        Path.Log.warning(
+            "The Tapping operation is deprecated and will be removed in a future release."
+            "\nPlease use the Drilling operation with Strategy set to 'Tapping' instead."
+            "\nExisting Tapping operations will continue to work but you cannot create new ones."
+        )
 
 
 def SetupProperties():
