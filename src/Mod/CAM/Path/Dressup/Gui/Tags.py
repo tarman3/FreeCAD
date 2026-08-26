@@ -276,10 +276,12 @@ class PathDressupTagTaskPanel:
             Path.Log.notice(f"ignore new tag at {point} (obj={obj}, on-path=0")
 
     def addNewTag(self):
+        print("addNewTag")
         self.tags = self.getTags(True)
         self.getPoint.getPoint(self.addNewTagAt)
 
     def editTagAt(self, point, obj):
+        print("editTagAt", point)
         Path.Log.track(point, obj)
         if point and self.obj.Proxy.pointIsOnPath(self.obj, point):
             tags = []
@@ -291,6 +293,7 @@ class PathDressupTagTaskPanel:
             self.updateTagsViewWith(tags)
 
     def editTag(self, item):
+        print("editTag", item)
         if item:
             self.tags = self.getTags(True)
             self.editItem = item.data(self.DataID)
@@ -502,12 +505,15 @@ class PathDressupTagViewProvider:
         #    tag.purgeTouched()
 
     def setEdit(self, vobj, mode=0):
-        panel = PathDressupTagTaskPanel(vobj.Object, self)
-        self.setupTaskPanel(panel)
+        if mode == 1:
+            FreeCADGui.runCommand("Std_TransformManip")
+        elif mode == 0:
+            panel = PathDressupTagTaskPanel(vobj.Object, self)
+            self.setupTaskPanel(panel)
         return True
 
     def unsetEdit(self, vobj, mode):
-        if hasattr(self, "panel") and self.panel:
+        if mode == 0 and hasattr(self, "panel") and self.panel:
             self.panel.abort()
 
     def setupTaskPanel(self, panel):

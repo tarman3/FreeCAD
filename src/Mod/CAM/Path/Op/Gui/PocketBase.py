@@ -43,6 +43,7 @@ FeaturePocket = 0x01
 FeatureFacing = 0x02
 FeatureOutline = 0x04
 FeatureRestMachining = 0x08
+FeatureExtension = 0x10
 
 
 class TaskPanelOpPage(PathOpGui.TaskPanelPage):
@@ -50,6 +51,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
     FeaturePocket  ... used for pocketing operation
     FeatureFacing  ... used for face milling operation
     FeatureOutline ... used for pocket-shape operation
+    FeatureExtension ... used for pocket-shape operation
     """
 
     def pocketFeatures(self):
@@ -57,6 +59,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
           FeaturePocket  ... used for pocketing operation
           FeatureFacing  ... used for face milling operation
           FeatureOutline ... used for pocket-shape operation
+          FeatureExtension ... used for pocket-shape operation
         Must be overwritten by subclasses"""
 
     def initPage(self, obj):
@@ -69,6 +72,9 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
 
         FreeCADGui.ExpressionBinding(self.form.finishingPasses).bind(self.obj, "FinishingPasses")
 
+        if FeatureExtension & self.pocketFeatures():
+            self.extensionSpinBox = QuantitySpinBox(self.form.extension, obj, "ExtensionOffset")
+
     def getToolTipList(self):
         """getToolTipList() ... Collect list of tuples (widget_name: str, property_name: str)"""
         tuples = []
@@ -76,6 +82,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         tuples.append(("clearingPattern", "ClearingPattern"))
         tuples.append(("startAt", "StartAt"))
         tuples.append(("sorting", "SortingMode"))
+        tuples.append(("handleMultipleFeatures", "HandleMultipleFeatures"))
         tuples.append(("angle", "Angle"))
         tuples.append(("stepOver", "StepOver"))
         tuples.append(("finishingPasses", "FinishingPasses"))
@@ -83,10 +90,12 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         tuples.append(("extraOffset", "ExtraOffset"))
         tuples.append(("threshold", "RetractThreshold"))
         tuples.append(("finishingOneStepDown", "FinishingOneStepDown"))
+        tuples.append(("finishingRampHelix", "FinishingRampHelix"))
         tuples.append(("useOutline", "UseOutline"))
         tuples.append(("clearEdges", "clearEdges"))
         tuples.append(("useRestMachining", "UseRestMachining"))
         tuples.append(("useStartPoint", "UseStartPoint"))
+        tuples.append(("extension", "ExtensionOffset"))
 
         return tuples
 
@@ -99,6 +108,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
             ("clearingPattern", "ClearingPattern"),
             ("startAt", "StartAt"),
             ("sorting", "SortingMode"),
+            ("handleMultipleFeatures", "HandleMultipleFeatures"),
         ]
         enumTups = PathPocket.ObjectPocket.pocketPropertyEnumerations(dataType="raw")
 
@@ -114,6 +124,10 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         if not (FeatureRestMachining & self.pocketFeatures()):
             form.useRestMachining.hide()
 
+        if not (FeatureExtension & self.pocketFeatures()):
+            form.extension.hide()
+            form.extension_label.hide()
+
         return form
 
     def updateQuantitySpinBoxes(self, index=None):
@@ -121,6 +135,9 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         self.thresholdSpinBox.updateWidget()
         self.finishingOffsetSpinBox.updateWidget()
         self.angleSpinBox.updateWidget()
+
+        if FeatureExtension & self.pocketFeatures():
+            self.extensionSpinBox.updateWidget()
 
     def getFields(self, obj):
         """getFields(obj) ... transfers values from UI to obj's properties"""
@@ -132,6 +149,8 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
             obj.StartAt = str(self.form.startAt.currentData())
         if obj.SortingMode != str(self.form.sorting.currentData()):
             obj.SortingMode = str(self.form.sorting.currentData())
+        if obj.HandleMultipleFeatures != str(self.form.handleMultipleFeatures.currentData()):
+            obj.HandleMultipleFeatures = str(self.form.handleMultipleFeatures.currentData())
 
         if obj.StepOver != self.form.stepOver.value():
             obj.StepOver = self.form.stepOver.value()
@@ -145,6 +164,8 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
 
         if obj.FinishingOneStepDown != self.form.finishingOneStepDown.isChecked():
             obj.FinishingOneStepDown = self.form.finishingOneStepDown.isChecked()
+        if obj.FinishingRampHelix != self.form.finishingRampHelix.isChecked():
+            obj.FinishingRampHelix = self.form.finishingRampHelix.isChecked()
 
         if obj.UseStartPoint != self.form.useStartPoint.isChecked():
             obj.UseStartPoint = self.form.useStartPoint.isChecked()
@@ -165,6 +186,9 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
             if obj.ClearEdges != self.form.clearEdges.isChecked():
                 obj.ClearEdges = self.form.clearEdges.isChecked()
 
+        if FeatureExtension & self.pocketFeatures():
+            self.extensionSpinBox.updateProperty()
+
     def setFields(self, obj):
         """setFields(obj) ... transfers obj's property values to UI"""
         self.updateQuantitySpinBoxes()
@@ -173,6 +197,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         self.form.stepOver.setValue(obj.StepOver)
 
         self.form.finishingOneStepDown.setChecked(obj.FinishingOneStepDown)
+        self.form.finishingRampHelix.setChecked(obj.FinishingRampHelix)
         self.form.useStartPoint.setChecked(obj.UseStartPoint)
         self.form.useRestMachining.setChecked(obj.UseRestMachining)
         if FeatureOutline & self.pocketFeatures():
@@ -182,6 +207,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         self.selectInComboBox(obj.CutMode, self.form.cutMode)
         self.selectInComboBox(obj.StartAt, self.form.startAt)
         self.selectInComboBox(obj.SortingMode, self.form.sorting)
+        self.selectInComboBox(obj.HandleMultipleFeatures, self.form.handleMultipleFeatures)
 
         if FeatureFacing & self.pocketFeatures():
             self.selectInComboBox(obj.BoundaryShape, self.form.boundaryShape)
@@ -197,6 +223,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         signals.append(self.form.clearingPattern.currentIndexChanged)
         signals.append(self.form.startAt.currentIndexChanged)
         signals.append(self.form.sorting.currentIndexChanged)
+        signals.append(self.form.handleMultipleFeatures.currentIndexChanged)
         signals.append(self.form.stepOver.editingFinished)
         signals.append(self.form.finishingOffset.editingFinished)
         signals.append(self.form.finishingPasses.editingFinished)
@@ -204,6 +231,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         signals.append(self.form.extraOffset.editingFinished)
         signals.append(self.form.threshold.editingFinished)
         signals.append(self.form.finishingOneStepDown.clicked)
+        signals.append(self.form.finishingRampHelix.clicked)
         signals.append(self.form.useStartPoint.clicked)
         signals.append(self.form.useRestMachining.clicked)
         signals.append(self.form.useOutline.clicked)
@@ -211,6 +239,9 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         if FeatureFacing & self.pocketFeatures():
             signals.append(self.form.boundaryShape.currentIndexChanged)
             signals.append(self.form.clearEdges.clicked)
+
+        if FeatureExtension & self.pocketFeatures():
+            signals.append(self.form.extension.editingFinished)
 
         return signals
 
@@ -222,10 +253,11 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         self.form.startAt.currentIndexChanged.connect(self.updateVisibility)
 
     def updateVisibility(self):
-        self.form.startAt.setEnabled(self.obj.ClearingPattern in ("Offset",))
-        self.form.angle.setEnabled(self.obj.ClearingPattern not in ("Offset",))
+        self.form.startAt.setEnabled(self.obj.ClearingPattern in ("Offset", "Helix"))
+        self.form.angle.setEnabled(self.obj.ClearingPattern not in ("Offset", "Helix"))
         self.form.finishingOffset.setEnabled(self.obj.FinishingPasses)
         self.form.finishingOneStepDown.setEnabled(self.obj.FinishingPasses)
+        self.form.finishingRampHelix.setEnabled(self.obj.FinishingPasses)
         self.form.useStartPoint.setEnabled(self.obj.StartAt != "Center")
 
     def setStartPoint(self):

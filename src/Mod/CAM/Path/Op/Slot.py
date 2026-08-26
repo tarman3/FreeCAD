@@ -25,17 +25,17 @@ __url__ = "https://www.freecad.org"
 __doc__ = "Class and implementation of Slot operation."
 __contributors__ = ""
 
-import FreeCAD
-from PySide import QtCore
-import Path
-import Path.Op.Base as PathOp
-import PathScripts.PathUtils as PathUtils
 import math
 
-# lazily loaded modules
+import FreeCAD
+import Part
 from lazy_loader.lazy_loader import LazyLoader
+from PathScripts import PathUtils
+from PySide import QtCore
 
-Part = LazyLoader("Part", globals(), "Part")
+import Path
+import Path.Op.Base as PathOp
+
 Arcs = LazyLoader("draftgeoutils.arcs", globals(), "draftgeoutils.arcs")
 if FreeCAD.GuiUp:
     FreeCADGui = LazyLoader("FreeCADGui", globals(), "FreeCADGui")
@@ -84,7 +84,7 @@ class ObjectSlot(PathOp.ObjectOp):
     def initOpProperties(self, obj, warn=False):
         """initOpProperties(obj) ... create operation specific properties"""
         Path.Log.track()
-        self.addNewProps = list()
+        self.addNewProps = []
 
         for prtyp, nm, grp, tt in self.opPropertyDefinitions():
             if not hasattr(obj, nm):
@@ -240,6 +240,7 @@ class ObjectSlot(PathOp.ObjectOp):
             "CutPattern": [
                 (translate("CAM_Slot", "Directional"), "Directional"),
                 (translate("CAM_Slot", "Bidirectional"), "Bidirectional"),
+                (translate("CAM_Slot", "Inclined"), "Inclined"),
             ],
             "PathOrientation": [
                 (translate("CAM_Slot", "Start to End"), "Start to End"),
@@ -272,7 +273,7 @@ class ObjectSlot(PathOp.ObjectOp):
         if dataType == "raw":
             return enums
 
-        data = list()
+        data = []
         idx = 0 if dataType == "translated" else 1
 
         Path.Log.debug(enums)
@@ -307,21 +308,20 @@ class ObjectSlot(PathOp.ObjectOp):
         """getActiveEnumerations(obj) ...
         Method returns dictionary of property enumerations based on
         active conditions in the operation."""
-        ENUMS = dict()
+        ENUMS = {}
         for prop, data in ObjectSlot.propertyEnumerations():
             ENUMS[prop] = data
-        if hasattr(obj, "Base"):
-            if obj.Base:
-                # (base, subsList) = obj.Base[0]
-                subsList = obj.Base[0][1]
-                subCnt = len(subsList)
-                if subCnt == 1:
-                    # Adjust available enumerations
-                    ENUMS["Reference1"] = self._makeReference1Enumerations(subsList[0], True)
-                elif subCnt == 2:
-                    # Adjust available enumerations
-                    ENUMS["Reference1"] = self._makeReference1Enumerations(subsList[0])
-                    ENUMS["Reference2"] = self._makeReference2Enumerations(subsList[1])
+        if getattr(obj, "Base", None):
+            # (base, subsList) = obj.Base[0]
+            subsList = obj.Base[0][1]
+            subCnt = len(subsList)
+            if subCnt == 1:
+                # Adjust available enumerations
+                ENUMS["Reference1"] = self._makeReference1Enumerations(subsList[0], True)
+            elif subCnt == 2:
+                # Adjust available enumerations
+                ENUMS["Reference1"] = self._makeReference1Enumerations(subsList[0])
+                ENUMS["Reference2"] = self._makeReference2Enumerations(subsList[1])
         return ENUMS
 
     def updateEnumerations(self, obj):
@@ -358,27 +358,24 @@ class ObjectSlot(PathOp.ObjectOp):
         # Used to hide inputs in properties list
         A = B = 2
         C = 0
-        if hasattr(obj, "Base"):
-            if obj.Base:
-                # (base, subsList) = obj.Base[0]
-                subsList = obj.Base[0][1]
-                subCnt = len(subsList)
-                if subCnt == 1:
-                    A = 0
-                elif subCnt == 2:
-                    A = B = 0
-                    C = 2
+        if getattr(obj, "Base", None):
+            # (base, subsList) = obj.Base[0]
+            subsList = obj.Base[0][1]
+            subCnt = len(subsList)
+            if subCnt == 1:
+                A = 0
+            elif subCnt == 2:
+                A = B = 0
+                C = 2
 
         obj.setEditorMode("Reference1", A)
         obj.setEditorMode("Reference2", B)
         obj.setEditorMode("ExtendRadius", C)
 
     def onChanged(self, obj, prop):
-        if hasattr(self, "propertiesReady"):
-            if self.propertiesReady:
-                if prop in ["Base"]:
-                    self.updateEnumerations(obj)
-                    self.opSetEditorModes(obj)
+        if getattr(self, "propertiesReady", None) and prop == "Base":
+            self.updateEnumerations(obj)
+            self.opSetEditorModes(obj)
 
         if prop == "Active" and obj.ViewObject:
             obj.ViewObject.signalChangeIcon()
@@ -419,19 +416,10 @@ class ObjectSlot(PathOp.ObjectOp):
     def opApplyPropertyDefaults(self, obj, job, propList):
         # Set standard property defaults
         PROP_DFLTS = self.opPropertyDefaults(obj, job)
-        for n in PROP_DFLTS:
-            if n in propList:
-                prop = getattr(obj, n)
-                val = PROP_DFLTS[n]
-                setVal = False
-                if hasattr(prop, "Value"):
-                    if isinstance(val, int) or isinstance(val, float):
-                        setVal = True
-                if setVal:
-                    # propVal = getattr(prop, 'Value')
-                    setattr(prop, "Value", val)
-                else:
-                    setattr(obj, n, val)
+        for name in PROP_DFLTS:
+            if name in propList:
+                val = PROP_DFLTS[name]
+                setattr(obj, name, val)
 
     def opSetDefaultValues(self, obj, job):
         """opSetDefaultValues(obj, job) ... initialize defaults"""
@@ -462,7 +450,6 @@ class ObjectSlot(PathOp.ObjectOp):
 
     def opApplyPropertyLimits(self, obj):
         """opApplyPropertyLimits(obj) ... Apply necessary limits to user input property values before performing main operation."""
-        pass
 
     def opUpdateDepths(self, obj):
         if hasattr(obj, "Base") and obj.Base:
@@ -725,17 +712,10 @@ class ObjectSlot(PathOp.ObjectOp):
         """This method is the last step in the overall arc slot creation process.
         It accepts the operation object and two end points for the path.
         It returns the gcode for the slot operation."""
-        CMDS = list()
-        PATHS = [(p2, p1, "G2"), (p1, p2, "G3")]
-        if obj.ReverseDirection:
-            path_index = 1
-        else:
-            path_index = 0
 
         def arcPass(POINTS, depth):
-            cmds = list()
+            cmds = []
             st_pt, end_pt, arcCmd = POINTS
-            # cmds.append(Path.Command('N (Tool type: {})'.format(toolType), {}))
             cmds.append(Path.Command("G0", {"X": st_pt.x, "Y": st_pt.y, "F": self.horizRapid}))
             cmds.append(Path.Command("G1", {"Z": depth, "F": self.vertFeed}))
             vtc = self.arcCenter.sub(st_pt)  # vector to center
@@ -753,22 +733,38 @@ class ObjectSlot(PathOp.ObjectOp):
             )
             return cmds
 
+        CMDS = []
+        PATHS = {True: (p2, p1, "G2"), False: (p1, p2, "G3")}
+        safeCmd = Path.Command("G0", {"Z": obj.SafeHeight.Value, "F": self.vertRapid})
+        revDir = obj.ReverseDirection
+
         if obj.CutPattern == "Directional":
             for depth in self.depthParams:
-                CMDS.extend(arcPass(PATHS[path_index], depth))
-                CMDS.append(Path.Command("G0", {"Z": obj.SafeHeight.Value, "F": self.vertRapid}))
+                CMDS.extend(arcPass(PATHS[revDir], depth))
+                CMDS.append(safeCmd)
             CMDS.pop()  # remove last move to safe height
-        else:
+        elif obj.CutPattern == "Bidirectional":
             for i, depth in enumerate(self.depthParams):
-                if i % 2 == 0:  # even
-                    CMDS.extend(arcPass(PATHS[path_index], depth))
-                else:  # odd
-                    CMDS.extend(arcPass(PATHS[not path_index], depth))
+                if i == 0:
+                    CMDS.extend(arcPass(PATHS[revDir], depth))
+                elif i & 1 == 0:
+                    CMDS.extend(arcPass(PATHS[revDir], depth)[1:])
+                else:
+                    CMDS.extend(arcPass(PATHS[not revDir], depth)[1:])
+        else:  # obj.CutPattern == "Inclined"
+            CMDS.extend(arcPass(PATHS[revDir], obj.StartDepth.Value)[:2])
+            for depth in self.depthParams:
+                cmd = arcPass(PATHS[revDir], depth)[-1]
+                par = cmd.Parameters
+                par.update({"Z": depth})
+                cmd.Parameters = par
+                CMDS.append(cmd)
+                CMDS.append(arcPass(PATHS[not revDir], 0)[-1])
 
         if self.isDebug:
-            Path.Log.debug("G-code arc command is: {}".format(PATHS[path_index][2]))
+            Path.Log.debug("G-code arc command is: {}".format(PATHS[revDir][2]))
 
-        CMDS.insert(1, Path.Command("G0", {"Z": obj.SafeHeight.Value, "F": self.vertRapid}))
+        CMDS.insert(1, safeCmd)
 
         return CMDS
 
@@ -859,32 +855,39 @@ class ObjectSlot(PathOp.ObjectOp):
         """This method is the last in the overall line slot creation process.
         It accepts the operation object and two end points for the path.
         It returns the gcode for the slot operation."""
-        CMDS = list()
+        CMDS = []
 
         def linePass(p1, p2, depth):
-            cmds = list()
-            # cmds.append(Path.Command('N (Tool type: {})'.format(toolType), {}))
-            cmds.append(Path.Command("G0", {"X": p1.x, "Y": p1.y, "F": self.horizRapid}))
+            cmds = []
+            cmds.append(Path.Command("G0", {"X": p1.x, "Y": p1.y}))
             cmds.append(Path.Command("G1", {"Z": depth, "F": self.vertFeed}))
             cmds.append(Path.Command("G1", {"X": p2.x, "Y": p2.y, "F": self.horizFeed}))
             return cmds
 
-        if obj.CutPattern == "Directional":
-            for dep in self.depthParams:
-                CMDS.extend(linePass(p1, p2, dep))
-                CMDS.append(Path.Command("G0", {"Z": obj.SafeHeight.Value, "F": self.vertRapid}))
-            CMDS.pop()  # remove last move to safe height
-        else:
-            CMDS.append(Path.Command("G0", {"X": p1.x, "Y": p1.y, "F": self.horizRapid}))
-            for i, dep in enumerate(self.depthParams):
-                if i % 2 == 0:  # even
-                    CMDS.append(Path.Command("G1", {"Z": dep, "F": self.vertFeed}))
-                    CMDS.append(Path.Command("G1", {"X": p2.x, "Y": p2.y, "F": self.horizFeed}))
-                else:  # odd
-                    CMDS.append(Path.Command("G1", {"Z": dep, "F": self.vertFeed}))
-                    CMDS.append(Path.Command("G1", {"X": p1.x, "Y": p1.y, "F": self.horizFeed}))
+        safeCmd = Path.Command("G0", {"Z": obj.SafeHeight.Value})
 
-        CMDS.insert(1, Path.Command("G0", {"Z": obj.SafeHeight.Value, "F": self.vertRapid}))
+        if obj.CutPattern == "Directional":
+            for depth in self.depthParams:
+                CMDS.extend(linePass(p1, p2, depth))
+                CMDS.append(safeCmd)
+            CMDS.pop()  # remove last useless move to safe height
+        elif obj.CutPattern == "Bidirectional":
+            for i, depth in enumerate(self.depthParams):
+                if i == 0:
+                    CMDS.extend(linePass(p1, p2, depth))
+                if i & 1 == 0:
+                    CMDS.extend(linePass(p1, p2, depth)[1:])
+                else:
+                    CMDS.extend(linePass(p2, p1, depth)[1:])
+        else:  # obj.CutPattern == "Inclined"
+            CMDS.extend(linePass(p1, p2, obj.StartDepth.Value)[:2])
+            for depth in self.depthParams:
+                CMDS.append(
+                    Path.Command("G1", {"X": p2.x, "Y": p2.y, "Z": depth, "F": self.horizFeed})
+                )
+                CMDS.append(Path.Command("G1", {"X": p1.x, "Y": p1.y, "F": self.horizFeed}))
+
+        CMDS.insert(1, safeCmd)  # add first move to safe height
 
         return CMDS
 
@@ -1050,7 +1053,7 @@ class ObjectSlot(PathOp.ObjectOp):
     def _processSingleComplexFace(self, obj, shape):
         """Determine slot path endpoints from a single complex face."""
         Path.Log.debug("_processSingleComplexFace()")
-        pnts = list()
+        pnts = []
 
         def zVal(p):
             return p.z
@@ -1187,7 +1190,7 @@ class ObjectSlot(PathOp.ObjectOp):
         p2 = None
         dYdX1 = None
         dYdX2 = None
-        self.bottomEdges = list()
+        self.bottomEdges = []
 
         feature1 = self._processFeature(obj, shape_1, sub1, 1)
         if not feature1:
@@ -1212,11 +1215,12 @@ class ObjectSlot(PathOp.ObjectOp):
         # Parallel check for twin face, and face-edge cases
         if dYdX1 and dYdX2:
             Path.Log.debug("dYdX1, dYdX2: {}, {}".format(dYdX1, dYdX2))
-            if not self._isParallel(dYdX1, dYdX2):
-                if self.shapeType1 != "Edge" or self.shapeType2 != "Edge":
-                    msg = translate("CAM_Slot", "Selected geometry not parallel.")
-                    FreeCAD.Console.PrintError(msg + "\n")
-                    return False
+            if not self._isParallel(dYdX1, dYdX2) and (
+                self.shapeType1 != "Edge" or self.shapeType2 != "Edge"
+            ):
+                msg = translate("CAM_Slot", "Selected geometry not parallel.")
+                FreeCAD.Console.PrintError(msg + "\n")
+                return False
 
         if p2:
             return p1, p2
@@ -1559,7 +1563,7 @@ class ObjectSlot(PathOp.ObjectOp):
     def _lineCollisionCheck(self, obj, p1, p2):
         """Model the swept volume of a linear tool move and check for collision with the model."""
         rad = getattr(self.tool.Diameter, "Value", self.tool.Diameter) / 2
-        extVect = FreeCAD.Vector(0, 0, obj.StartDepth.Value - obj.FinalDepth.Value)
+        extVect = FreeCAD.Vector(0, 0, max(obj.StartDepth.Value - obj.FinalDepth.Value, 1))
 
         def make_cylinder(point):
             circle = Part.makeCircle(rad, point)
@@ -1639,7 +1643,7 @@ class ObjectSlot(PathOp.ObjectOp):
 
         # Radius and extrusion direction
         rad = getattr(self.tool.Diameter, "Value", self.tool.Diameter) / 2
-        extVect = FreeCAD.Vector(0, 0, obj.StartDepth.Value - obj.FinalDepth.Value)
+        extVect = FreeCAD.Vector(0, 0, max(obj.StartDepth.Value - obj.FinalDepth.Value, 1))
 
         if self.isArc == 1:
             # Full circle slot: make annular ring

@@ -625,25 +625,11 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
         # validate that SafeHeight doesn't exceed ClearanceHeight
         safeHeight = obj.SafeHeight.Value
         clearanceHeight = obj.ClearanceHeight.Value
+        step_down = (
+            obj.StepDown.Value if Path.Geom.isStrictlyGreater(obj.StepDown.Value, 0) else 999999
+        )
         tooldiameter = obj.ToolController.Tool.Diameter.Value
         toolradius = tooldiameter / 2
-
-        if obj.StartDepth < obj.FinalDepth or isRoughly(obj.StartDepth.Value, obj.FinalDepth.Value):
-            obj.Path = Path.Path()
-            Path.Log.warning("StartDepth should be greater than FinalDepth")
-            return
-
-        if obj.StepDown < 0 or isRoughly(obj.StepDown.Value, 0):
-            obj.Path = Path.Path()
-            Path.Log.warning("StepDown should be greater than 0")
-            return
-
-        if safeHeight > clearanceHeight:
-            Path.Log.warning(
-                f"SafeHeight ({safeHeight}) is above ClearanceHeight ({clearanceHeight}). "
-                f"Using ClearanceHeight instead."
-            )
-            safeHeight = clearanceHeight
 
         singleHelix = obj.SingleHelix or obj.SpiralMill
 
@@ -789,7 +775,7 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
 
             # Split depth by step down
             work_distance = obj.StartDepth.Value - finalDepth
-            iters = Path.Geom.ceil(work_distance / obj.StepDown.Value)
+            iters = Path.Geom.ceil(work_distance / step_down)
             centerTop = FreeCAD.Vector(hole["x"], hole["y"], obj.StartDepth.Value)
             centerBottom = FreeCAD.Vector(centerTop.x, centerTop.y, centerTop.z)
             retractDistance = safeHeight - obj.StartDepth.Value
@@ -800,7 +786,7 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
                     )
                 else:
                     self.commandlist.append(Path.Command(f"(hole {hole_index + 1})"))
-                centerBottom.z = max(centerTop.z - obj.StepDown.Value, finalDepth)
+                centerBottom.z = max(centerTop.z - step_down, finalDepth)
                 if isRoughly(centerBottom.z, finalDepth):
                     centerBottom.z = finalDepth
 
@@ -829,7 +815,7 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
                     else:
                         cmd = Path.Command("G0", {"X": hole["x"], "Y": hole["y"]})
                         self.commandlist.append(cmd)
-                    drillStep = obj.HelixMaxPitch.Value or obj.StepDown.Value
+                    drillStep = obj.HelixMaxPitch.Value or step_down
                     drillSteps = Path.Geom.ceil((centerTop.z - centerBottom.z) / drillStep)
                     for iDrill in range(1, drillSteps + 1):
                         # drilling in peck mode
@@ -943,10 +929,22 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
 
                 centerTop.z = centerBottom.z  # top point for next iteration
 
-        PathFeedRate.setFeedRate(self.commandlist, obj.ToolController)
+        if hasattr(obj, "HorizFeed") and hasattr(obj, "VertFeed"):
+            PathFeedRate.setFeedRate(
+                self.commandlist, obj.ToolController, obj.HorizFeed, obj.VertFeed
+            )
+        else:
+            PathFeedRate.setFeedRate(self.commandlist, obj.ToolController)
 
-        horizFeed = obj.ToolController.HorizFeed.Value
-        vertFeed = obj.ToolController.VertFeed.Value
+        if hasattr(obj, "HorizFeed") and obj.HorizFeed.Value:
+            horizFeed = obj.HorizFeed.Value
+        else:
+            horizFeed = obj.ToolController.HorizFeed.Value
+
+        if hasattr(obj, "VertFeed") and obj.VertFeed.Value:
+            vertFeed = obj.VertFeed.Value
+        else:
+            vertFeed = obj.ToolController.VertFeed.Value
 
         if obj.OverrideArcFeedRate and horizFeed and vertFeed:
             self.overrideArcFeed(self.commandlist, tooldiameter, horizFeed, vertFeed, obj.Side)
