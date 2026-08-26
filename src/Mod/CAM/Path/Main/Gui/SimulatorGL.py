@@ -249,7 +249,10 @@ class CAMSimulation:
         self.activeOps = []
         for i in range(form.listOperations.count()):
             if form.listOperations.item(i).checkState() == QtCore.Qt.CheckState.Checked:
-                self.activeOps.append(self.operations[i])
+                if getattr(self.operations[i], "ArrayGroup", None):
+                    self.activeOps.extend(self.operations[i].ArrayGroup)
+                else:
+                    self.activeOps.append(self.operations[i])
 
         self.stock = self.job.Stock.Shape
 
@@ -263,9 +266,11 @@ class CAMSimulation:
         form.listOperations.clear()
         self.operations = []
         allhidden = all(
-            not op.Visibility for op in j.Operations.OutList if PathUtil.opProperty(op, "Active")
+            not op.Visibility
+            for op in PathUtils.getOperations(j)
+            if PathUtil.opProperty(op, "Active")
         )
-        for op in j.Operations.OutList:
+        for op in PathUtils.getOperations(j):
             if PathUtil.opProperty(op, "Active"):
                 listItem = QtGui.QListWidgetItem(op.ViewObject.Icon, op.Label)
                 listItem.setFlags(listItem.flags() | QtCore.Qt.ItemIsUserCheckable)

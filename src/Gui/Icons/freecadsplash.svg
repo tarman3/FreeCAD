@@ -3,8 +3,38 @@
    version="1.1"
    viewBox="0 0 480 220"
    id="freecadsplash"
+   sodipodi:docname="freecadsplash.svg"
+   inkscape:version="1.4.4 (dcaf3e7d9e, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showguides="false"
+     inkscape:zoom="1.4375032"
+     inkscape:cx="238.26034"
+     inkscape:cy="150.60836"
+     inkscape:window-width="1600"
+     inkscape:window-height="872"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="freecadsplash"
+     showgrid="false">
+    <sodipodi:guide
+       position="287.33495,171.29949"
+       orientation="1,0"
+       id="guide12"
+       inkscape:locked="false" />
+  </sodipodi:namedview>
   <defs
      id="defs8">
     <style
@@ -145,4 +175,9 @@
      id="border"
      class="border"
      d="M 14.5,1 C 7,1 1,7 1,14.5 v 191 c 0,7.5 6,13.5 13.5,13.5 h 451 c 7.5,0 13.5,-6 13.5,-13.5 V 14.5 C 479,7 473,1 465.5,1 Z" />
+  <path
+     d="m 313.01075,176.58004 c -2.73505,2.82472 -5.02173,3.90081 -8.20515,3.90081 -6.14265,0 -11.11955,-5.11141 -11.11955,-11.2989 0,-2.69022 1.03125,-5.55978 2.73505,-7.5326 2.01766,-2.37636 4.84239,-3.63179 8.24999,-3.63179 3.85597,0 6.45651,1.25543 8.69836,4.16983 h 6.86004 c -1.25543,-2.77989 -2.33151,-4.2595 -4.43885,-6.05298 -3.09374,-2.60054 -7.08423,-4.03532 -11.25406,-4.03532 -9.37091,0 -17.03802,7.66711 -17.03802,17.03802 0,9.5951 7.75678,17.26221 17.44155,17.26221 6.81521,0 12.68884,-3.7663 15.28938,-9.81928 z m 7.93612,9.2364 h 6.77037 l 3.67663,-8.56385 h 11.7921 l 3.54212,8.56385 h 6.77037 l -13.89944,-33.13447 h -4.84239 z m 12.68884,-14.43748 3.54212,-10.04347 3.54211,10.04347 z m 23.36001,14.43748 h 6.14266 v -24.83965 l 8.65352,24.83965 h 5.02173 l 8.65352,-24.83965 v 24.83965 h 6.14266 v -33.13447 h -8.42934 l -8.83287,25.10866 -8.92254,-25.10866 h -8.42934 z m 47.8858,-15.96194 h 0.98641 c 3.99048,0 6.50135,2.19701 6.50135,5.55978 0,3.18342 -2.19701,5.51493 -5.20108,5.51493 -2.9144,0 -4.9769,-2.01766 -5.38043,-5.15624 h -6.00815 c 0.3587,6.23233 5.06657,10.62635 11.43341,10.62635 6.41168,0 11.11955,-4.70788 11.11955,-11.11955 0,-4.16984 -1.7038,-6.99456 -5.15624,-8.56385 1.92799,-1.38995 2.77989,-3.13859 2.77989,-5.69429 0,-5.1114 -3.81114,-8.92254 -8.92254,-8.92254 -2.51087,0 -4.84239,0.94157 -6.50135,2.69021 -1.47962,1.52446 -2.0625,3.00408 -2.28669,5.78396 h 6.05299 c 0.26902,-2.06249 1.12092,-3.00407 2.77988,-3.00407 1.70381,0 2.9144,1.30027 2.9144,3.13858 0,1.38995 -0.62771,2.37636 -1.83831,2.9144 -0.76223,0.31386 -1.56929,0.44837 -3.27309,0.49321 z"
+     id="text1"
+     style="font-weight:bold;font-size:44.8369px;line-height:1.2;font-family:Evolventa;-inkscape-font-specification:'Evolventa, Bold';letter-spacing:0px;fill:#ff0000;stroke-width:0.766652;stroke-miterlimit:4.6;paint-order:markers fill stroke"
+     aria-label="CAM3" />
 </svg>

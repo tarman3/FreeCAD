@@ -27,11 +27,6 @@ import Path.Op.Base as PathOp
 import Path.Op.PocketBase as PathPocketBase
 from PathScripts import PathUtils
 
-# lazily loaded modules
-from lazy_loader.lazy_loader import LazyLoader
-
-FeatureExtensions = LazyLoader("Path.Op.FeatureExtension", globals(), "Path.Op.FeatureExtension")
-
 translate = FreeCAD.Qt.translate
 
 __title__ = "CAM Pocket Shape Operation"
@@ -53,8 +48,8 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
     def areaOpFeatures(self, obj):
         return (
             super(self.__class__, self).areaOpFeatures(obj)
-            | PathOp.FeatureLocations
             | PathOp.FeatureBaseEdges
+            | PathOp.FeatureExtension
         )
 
     def removeHoles(self, solids, face, tol):
@@ -77,8 +72,6 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
                 "Pocket",
                 QT_TRANSLATE_NOOP("App::Property", "Uses the outline of the base geometry."),
             )
-
-        FeatureExtensions.initialize_properties(obj)
         if not hasattr(obj, "CloseOpenPaths"):
             obj.addProperty(
                 "App::PropertyBool",
@@ -104,7 +97,6 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
         obj.Angle = 45
         obj.setEditorMode("Angle", 2)  # hide for default Offset pattern
         obj.UseOutline = False
-        FeatureExtensions.set_default_property_values(obj, job)
         obj.FinishingPasses = (0, 0, 999999, 1)
 
     def areaOpShapes(self, obj):
@@ -112,15 +104,8 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
         Path.Log.track()
         # self.isDebug = True if Path.Log.getLevel(Path.Log.thisModule()) == 4 else False
         self.removalshapes = []
-        avoidFeatures = []
         tol = self.job.GeometryTolerance.Value or 0.01
         solids = [base.Shape for base in self.model if base.Shape.Faces]
-
-        # Get extensions and identify faces to avoid
-        extensions = FeatureExtensions.getExtensions(obj)
-        for e in extensions:
-            if e.avoid:
-                avoidFeatures.append(e.feature)
 
         if obj.Base:
             Path.Log.debug("base items exist.  Processing...")
@@ -129,9 +114,6 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
             self.edges = []
             for base, subList in self.baseShapes(obj):
                 for sub in subList:
-                    if sub in avoidFeatures:
-                        # skip this sub shape
-                        continue
                     if "Edge" in sub and self.classifySubEdge(base, sub):
                         # edge added to list
                         continue
@@ -168,17 +150,11 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
             if obj.UseOutline and self.horiz:
                 self.horiz = [self.removeHoles(solids, face, tol) for face in self.horiz]
 
-            # Add faces for extensions
-            # Note: Extension faces don't have a parent base object, so we append them directly
-            self.exts = []
-            for ext in extensions:
-                if not ext.avoid:
-                    wire = ext.getWire()
-                    if wire:
-                        faces = ext.getExtensionFaces(wire)
-                        for f in faces:
-                            self.horiz.append(f)
-                            self.exts.append(f)
+            # Expand selected regions with extensions
+            if obj.ExtensionOffset:
+                self.horiz = PathUtils.getExtendedFaces(
+                    self.horiz, obj.ExtensionOffset.Value, solids, tol=tol
+                )
 
             # check all faces and see if they are touching/overlapping and combine and simplify
             keepOrder = obj.SortingMode == "Manual"
@@ -186,16 +162,12 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
                 self.horiz, keepOrder=keepOrder, tol=tol
             )
 
-            # Move all faces to final depth before extrusion
+            # Move all faces to (final depth - 1 mm) before extrusion
+            # Extrude all faces up to (StartDepth + 1 mm) to get the removal shapes
+            # Use extra length to exclude precision errors while create sections
             for h in self.horizontal:
-                h.translate(FreeCAD.Vector(0.0, 0.0, obj.FinalDepth.Value - h.BoundBox.ZMin))
-
-            # Extrude all faces up to StartDepth to get the removal shapes.
-            # Area cannot section a solid only microns tall when the face has curved edges,
-            # so extrude at least 1 mm.
-            # The extra height above StartDepth is never sectioned:
-            # the depth parameters come from the operation, not from the shape.
-            extent = FreeCAD.Vector(0, 0, max(obj.StartDepth.Value - obj.FinalDepth.Value, 1))
+                h.translate(FreeCAD.Vector(0, 0, obj.FinalDepth.Value - h.BoundBox.ZMin - 1))
+            extent = FreeCAD.Vector(0, 0, obj.StartDepth.Value - obj.FinalDepth.Value + 2)
             self.removalshapes = [
                 (face.removeSplitter().extrude(extent), False) for face in self.horizontal
             ]
@@ -355,11 +327,12 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
 
 def SetupProperties():
     setup = PathPocketBase.SetupProperties()  # Add properties from PocketBase module
-    setup.extend(FeatureExtensions.SetupProperties())  # Add properties from Extensions Feature
 
     # Add properties initialized here in PocketShape
     setup.append("UseOutline")
     setup.append("CloseOpenPaths")
+    setup.append("ExtensionOffset")
+
     return setup
 
 

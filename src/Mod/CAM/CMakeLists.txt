@@ -398,14 +398,15 @@ SET(PathPythonOp_SRCS
     Path/Op/__init__.py
     Path/Op/Adaptive.py
     Path/Op/Area.py
+    Path/Op/Array.py
     Path/Op/Base.py
     Path/Op/CircularHoleBase.py
     Path/Op/Custom.py
     Path/Op/Deburr.py
+    Path/Op/Deburring.py
     Path/Op/Engrave.py
     Path/Op/EngraveBase.py
     Path/Op/Flute.py
-    Path/Op/FeatureExtension.py
     Path/Op/Drilling.py
     Path/Op/Helix.py
     Path/Op/MillFace.py
@@ -437,14 +438,15 @@ SET(PathPythonOpGui_SRCS
     Path/Op/Gui/Copy.py
     Path/Op/Gui/Custom.py
     Path/Op/Gui/Deburr.py
+    Path/Op/Gui/Deburring.py
     Path/Op/Gui/Drilling.py
     Path/Op/Gui/Engrave.py
-    Path/Op/Gui/FeatureExtension.py
     Path/Op/Gui/Flute.py
     Path/Op/Gui/Helix.py
     Path/Op/Gui/MillFace.py
     Path/Op/Gui/MillFacing.py
     Path/Op/Gui/PathShape.py
+    Path/Op/Gui/PathCompoundTC.py
     Path/Op/Gui/Pocket.py
     Path/Op/Gui/PocketBase.py
     Path/Op/Gui/PocketShape.py
@@ -468,6 +470,7 @@ SET(PathScripts_SRCS
     PathScripts/PathUtilsGui.py
     PathScripts/PathPropertyBag.py
     PathScripts/PathPropertyBagGui.py
+    PathScripts/tsp.py
     PathScripts/__init__.py
 )
 
@@ -613,6 +616,7 @@ SET(Tests_SRCS
     CAMTests/TestMassoG3Post.py
     CAMTests/TestMarlinPost.py
     CAMTests/TestOpenSBPPost.py
+    CAMTests/TestPathArrayOp.py
     CAMTests/TestPathAdaptive.py
     CAMTests/TestPathCommandAnnotations.py
     CAMTests/TestPathCore.py
@@ -643,6 +647,7 @@ SET(Tests_SRCS
     CAMTests/TestPathLogNew.py
     CAMTests/TestPathMillFacing.py
     CAMTests/TestPathOpDeburr.py
+    CAMTests/TestPathOpDeburring.py
     CAMTests/TestPathOpDeprecation.py
     CAMTests/TestPathOpUtil.py
     CAMTests/TestPostCore.py
