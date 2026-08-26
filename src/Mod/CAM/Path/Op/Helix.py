@@ -916,10 +916,22 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
 
                 centerTop.z = centerBottom.z  # top point for next iteration
 
-        PathFeedRate.setFeedRate(self.commandlist, obj.ToolController)
+        if hasattr(obj, "HorizFeed") and hasattr(obj, "VertFeed"):
+            PathFeedRate.setFeedRate(
+                self.commandlist, obj.ToolController, obj.HorizFeed, obj.VertFeed
+            )
+        else:
+            PathFeedRate.setFeedRate(self.commandlist, obj.ToolController)
 
-        horizFeed = obj.ToolController.HorizFeed.Value
-        vertFeed = obj.ToolController.VertFeed.Value
+        if hasattr(obj, "HorizFeed") and obj.HorizFeed.Value:
+            horizFeed = obj.HorizFeed.Value
+        else:
+            horizFeed = obj.ToolController.HorizFeed.Value
+
+        if hasattr(obj, "VertFeed") and obj.VertFeed.Value:
+            vertFeed = obj.VertFeed.Value
+        else:
+            vertFeed = obj.ToolController.VertFeed.Value
 
         if obj.OverrideArcFeedRate and horizFeed and vertFeed:
             self.overrideArcFeed(self.commandlist, tooldiameter, horizFeed, vertFeed, obj.Side)

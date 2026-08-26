@@ -147,9 +147,13 @@ class PathSimulation:
         self.ioperation = 0
         for i in range(form.listOperations.count()):
             if form.listOperations.item(i).checkState() == QtCore.Qt.CheckState.Checked:
+                if getattr(self.operations[i], "ArrayGroup", None):
+                    self.activeOps.extend(self.operations[i].ArrayGroup)
+                    self.numCommands += sum(op.Path.Size for op in self.operations[i].ArrayGroup)
+                else:
+                    self.activeOps.append(self.operations[i])
+                    self.numCommands += self.operations[i].Path.Size
                 self.firstDrill = True
-                self.activeOps.append(self.operations[i])
-                self.numCommands += len(self.operations[i].Path.Commands)
 
         self.stock = self.job.Stock.Shape
         if self.isVoxel:
@@ -481,7 +485,7 @@ class PathSimulation:
         self.job = j
         form.listOperations.clear()
         self.operations = []
-        for op in j.Operations.OutList:
+        for op in PathUtils.getOperations(j):
             if PathUtil.opProperty(op, "Active"):
                 listItem = QtGui.QListWidgetItem(op.ViewObject.Icon, op.Label)
                 listItem.setFlags(listItem.flags() | QtCore.Qt.ItemIsUserCheckable)

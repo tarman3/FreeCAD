@@ -303,7 +303,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="cutPatter_label">
         <property name="text">
-         <string>Layer mode</string>
+         <string>Cut pattern</string>
         </property>
        </widget>
       </item>

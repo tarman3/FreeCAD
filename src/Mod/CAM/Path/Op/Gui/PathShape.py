@@ -352,6 +352,61 @@ class ObjectPathShape:
             ),
         )
 
+        # Offset properties group
+        obj.addProperty(
+            "App::PropertyBool",
+            "EnableOffset",
+            "Offset",
+            QT_TRANSLATE_NOOP("App::Property", "Apply offset to shape"),
+        )
+        obj.addProperty(
+            "App::PropertyEnumeration",
+            "OffsetType",
+            "Offset",
+            QT_TRANSLATE_NOOP(
+                "App::Property",
+                "The output wires will be transformed by offset function."
+                "\n'makeOffset2D' use Part.Wire.makeOffset2D() directly"
+                "\n'offsetWire' use Path.Op.Util.offsetWire()",
+            ),
+        )
+        obj.addProperty(
+            "App::PropertyBool",
+            "UseComp",
+            "Offset",
+            QT_TRANSLATE_NOOP("App::Property", "Use tool radius compensation"),
+        )
+        obj.addProperty(
+            "App::PropertyBool",
+            "OffsetInvertSide",
+            "Offset",
+            QT_TRANSLATE_NOOP("App::Property", "Invert offset drection"),
+        )
+        obj.addProperty(
+            "App::PropertyDistance",
+            "OffsetExtra",
+            "Offset",
+            QT_TRANSLATE_NOOP("App::Property", "Offset from shape"),
+        )
+        obj.addProperty(
+            "App::PropertyEnumeration",
+            "OffsetJoin",
+            "Offset",
+            QT_TRANSLATE_NOOP("App::Property", "Method of offsetting non-tangent joints"),
+        )
+        obj.addProperty(
+            "App::PropertyBool",
+            "OffsetOpenResult",
+            "Offset",
+            QT_TRANSLATE_NOOP(
+                "App::Property",
+                "Affects the way open wires are processed.\n"
+                "If False, an open wire is made.\n"
+                "If True, a closed wire is made from a double-sided offset,\n"
+                "with rounds around open vertices.",
+            ),
+        )
+
         self.setDefaultValues(obj)
         self.setEditorMode(obj)
         self.setToolController()
@@ -377,6 +432,10 @@ class ObjectPathShape:
         obj.HandleMultipleFeatures = ("Collectively", "Individually")
         obj.HandleMultipleFeatures = "Individually"
         obj.NearestK = 3
+        obj.OffsetJoin = ("arcs", "tangent", "intersection")
+        obj.OffsetOpenResult = True
+        obj.OffsetType = ("makeOffset2D", "offsetWire")
+        obj.OffsetType = "offsetWire"
         obj.Orientation = ("Normal", "Reversed")
         obj.Orientation = "Normal"
         obj.RetractAxis = ("X", "Y", "Z")
@@ -386,21 +445,30 @@ class ObjectPathShape:
         obj.SortMode = ("None", "2D5", "3D", "Greedy")
         obj.SortMode = "2D5"
         obj.Verbose = True
+        obj.UseComp = True
 
     def setEditorMode(self, obj):
         obj.setEditorMode("CycleTime", 1)  # read-only
         obj.setEditorMode("PathParams", 2)  # hidden
 
         startPointMode = 0 if obj.UseStartPoint else 2
+        offsetMode = 0 if obj.EnableOffset else 2
+        offsetMode2 = 0 if obj.EnableOffset and obj.OffsetType == "makeOffset2D" else 2
         dualDirectionMode = 0 if obj.HandleMultipleFeatures == "Individually" else 2
 
         obj.setEditorMode("StartPoint", startPointMode)
+        obj.setEditorMode("UseComp", offsetMode)
+        obj.setEditorMode("OffsetExtra", offsetMode)
+        obj.setEditorMode("OffsetInvertSide", offsetMode)
+        obj.setEditorMode("OffsetType", offsetMode)
+        obj.setEditorMode("OffsetJoin", offsetMode2)
+        obj.setEditorMode("OffsetOpenResult", offsetMode2)
         obj.setEditorMode("DualDirection", dualDirectionMode)
 
     def setToolController(self):
         job = self.job
         obj = self.obj
-        for op in job.Operations.Group[-2::-1]:
+        for op in PathUtils.getOperations(job)[-2::-1]:
             toolController = PathUtil.toolControllerForOp(op)
             if toolController:
                 break
@@ -441,7 +509,9 @@ class ObjectPathShape:
 
     def onChanged(self, obj, prop):
         if prop in (
+            "EnableOffset",
             "UseStartPoint",
+            "OffsetType",
             "HandleMultipleFeatures",
         ):
             self.setEditorMode(obj)
@@ -472,6 +542,28 @@ class ObjectPathShape:
         if not wires:
             obj.Path = Path.Path()
             return
+
+        offsetVal = 0
+        if obj.EnableOffset:
+            offsetVal = obj.OffsetExtra.Value
+            if obj.UseComp:
+                offsetVal += obj.ToolController.Tool.Diameter.Value / 2
+            if obj.OffsetInvertSide:
+                offsetVal = -offsetVal
+
+        if offsetVal:
+            join = obj.getEnumerationsOfProperty("OffsetJoin").index(obj.OffsetJoin)
+            openResult = obj.OffsetOpenResult
+            job = PathUtils.findParentJob(obj)
+            base = job.Model.Group[0].Shape
+            offsets = []
+            for wire in wires:
+                if obj.OffsetType == "makeOffset2D":
+                    offset = wire.makeOffset2D(offsetVal, join=join, openResult=openResult)
+                else:
+                    offset = Path.Op.Util.offsetWire(wire, base, offsetVal, forward=True)
+                offsets.append(offset)
+            wires = offsets
 
         if obj.HandleMultipleFeatures == "Collectively" and len(wires) > 1:
             shapes = [Part.makeCompound(wires)]

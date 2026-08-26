@@ -63,11 +63,15 @@ def isOp(obj):
     return "Path.Op" in proxy or "Path.Dressup" in proxy
 
 
-def baseOp(path):
-    """baseOp(path) ... return the base operation underlying the given path"""
-    if hasattr(path, "Name") and "Dressup" in path.Name:
-        return baseOp(path.Base)
-    return path
+def baseOp(obj):
+    """baseOp(obj) ... return the base operation underlying the given path object"""
+    if (
+        getattr(obj, "Proxy", None)
+        and obj.Proxy.__module__.startswith("Path.Dressup")
+        and getattr(obj, "Base", None)
+    ):
+        return baseOp(obj.Base)
+    return obj
 
 
 def toolController(path, default=None):
