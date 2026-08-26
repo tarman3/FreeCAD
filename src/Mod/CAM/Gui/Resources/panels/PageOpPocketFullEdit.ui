@@ -188,6 +188,20 @@
         </property>
        </widget>
       </item>
+      <item row="20" column="0">
+       <widget class="QLabel" name="extension_label">
+        <property name="text">
+         <string>Extension</string>
+        </property>
+       </widget>
+      </item>
+      <item row="20" column="1">
+       <widget class="Gui::QuantitySpinBox" name="extension">
+        <property name="minimum">
+         <double>0</double>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
@@ -198,6 +212,13 @@
        <widget class="QCheckBox" name="finishingOneStepDown">
         <property name="text">
          <string>Finishing one step down</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QCheckBox" name="finishingRampHelix">
+        <property name="text">
+         <string>Finishing ramp helix</string>
         </property>
        </widget>
       </item>

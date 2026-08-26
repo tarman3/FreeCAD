@@ -1,25 +1,23 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2015 Dan Falck <ddfalck@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
 
-# ***************************************************************************
-# *   Copyright (c) 2015 Dan Falck <ddfalck@gmail.com>                      *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 """Post Process command that will make use of the Output File and Post
 Processor entries in PathJob"""
@@ -119,13 +117,8 @@ class CommandPathPost:
         }
 
     def IsActive(self):
-        selection = FreeCADGui.Selection.getSelection()
-        if not selection:
-            return False
-
-        self.candidate = PathUtils.findParentJob(selection[0])
-
-        return self.candidate is not None
+        self.candidate = None
+        return bool(PathUtils.GetJobs())
 
     def _write_file(self, filename, gcode, policy):
         #
@@ -206,6 +199,16 @@ class CommandPathPost:
         Handles the activation of post processing, initiating the process based
         on user selection and document context.
         """
+        if not self.candidate and (selection := FreeCADGui.Selection.getSelection()):
+            self.candidate = PathUtils.findParentJob(selection[0])
+
+        if not self.candidate and (jobs := PathUtils.GetJobs()):
+            self.candidate = PathUtils.UserInput.chooseJob(jobs)
+
+        if not self.candidate:
+            Path.Log.info(translate("CAM_Post", "Post process not executed. Job not defined"))
+            return
+
         Path.Log.debug(self.candidate.Name)
 
         self.operations = getattr(self, "operations", None)
@@ -365,7 +368,10 @@ class CommandPathPostSelected(CommandPathPost):
         if not selection:
             return False
 
-        return all(hasattr(op, "Path") and not op.Name.startswith("Job") for op in selection)
+        return all(
+            hasattr(sel, "Path") or (hasattr(sel, "Group") and PathUtils.getOperations(sel))
+            for sel in selection
+        )
 
     def Activated(self):
         """
@@ -387,9 +393,15 @@ class CommandPathPostSelected(CommandPathPost):
             job = PathUtils.findParentJob(baseOp)
         self.candidate = job
 
-        opCandidates = [op for op in selection if hasattr(op, "Path") and "Job" not in op.Name]
+        opCandidates = []
+        for sel in selection:
+            if hasattr(sel, "Path") and not sel.Name.startswith("Job"):
+                opCandidates.append(sel)
+            elif hasattr(sel, "Group"):
+                opCandidates.extend(PathUtils.getOperations(sel))
+
         self.operations = None
-        if opCandidates and job.Operations.Group != opCandidates:
+        if opCandidates and PathUtils.getOperations(job) != opCandidates:
             msgBox = QtGui.QMessageBox()
             msgBox.setWindowTitle("Post Process")
             msgBox.setText("<p align='center'>What needs to be exported?</p>")

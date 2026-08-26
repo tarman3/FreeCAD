@@ -1,25 +1,23 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2019 sliptonic <shopinthewoods@gmail.com>
+# SPDX-FileNotice: Part of the FreeCAD project.
 
-# ***************************************************************************
-# *   Copyright (c) 2019 sliptonic <shopinthewoods@gmail.com>               *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 import FreeCADGui
 import FreeCAD
@@ -27,7 +25,7 @@ import Path
 import Path.Main.Gui.JobCmd as PathJobCmd
 import Path.Main.Job as PathJob
 import Path.Tool.Controller as PathToolController
-import PathScripts.PathUtils as PathUtils
+from PathScripts import PathUtils
 from PySide.QtGui import QInputDialog
 
 if False:
@@ -39,17 +37,16 @@ else:
 translate = FreeCAD.Qt.translate
 
 
-class PathUtilsUserInput(object):
+class PathUtilsUserInput:
     def selectedToolController(self):
         tc = None
         # check if a user has selected a tool controller in the tree.
         # Return the first one and remove all from selection
-        for sel in FreeCADGui.Selection.getSelectionEx():
-            if hasattr(sel.Object, "Proxy"):
-                if isinstance(sel.Object.Proxy, PathToolController.ToolController):
-                    if tc is None:
-                        tc = sel.Object
-                    FreeCADGui.Selection.removeSelection(sel.Object)
+        for obj in FreeCADGui.Selection.getSelection():
+            if hasattr(obj, "Proxy") and isinstance(obj.Proxy, PathToolController.ToolController):
+                if tc is None:
+                    tc = obj
+                FreeCADGui.Selection.removeSelection(obj)
         return tc
 
     def chooseToolController(self, controllers):
@@ -59,7 +56,7 @@ class PathUtilsUserInput(object):
         r = form.exec_()
         if not r:
             return None
-        return [i for i in controllers if i.Label == form.uiToolController.currentText()][0]
+        return next(i for i in controllers if i.Label == form.uiToolController.currentText())
 
     def chooseJob(self, jobs):
         selected = FreeCADGui.Selection.getSelection()
