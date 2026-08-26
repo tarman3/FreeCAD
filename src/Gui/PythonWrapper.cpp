@@ -94,7 +94,11 @@
 #endif  // HAVE_SHIBOKEN
 
 #ifdef HAVE_PYSIDE
-# include <signalmanager.h>
+# if (SHIBOKEN_FULL_VERSION >= QT_VERSION_CHECK(6, 12, 0))
+#  include <pyobjectwrapper.h>
+# else
+#  include <signalmanager.h>
+# endif
 #endif  // HAVE_PYSIDE
 
 //-----------------------------------------------------------------------------
