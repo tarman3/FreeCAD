@@ -156,10 +156,12 @@ class CAMWorkbench(Workbench):
             "CAM_DressupArray",
             "CAM_DressupAxisMap",
             "CAM_DressupPathBoundary",
+            "CAM_DressupPathBoundary2",
             "CAM_DressupDogbone",
             "CAM_DressupDragKnife",
             "CAM_DressupLeadInOut",
             "CAM_DressupMirror",
+            "CAM_DressupPlungeMilling",
             "CAM_DressupRampEntry",
             "CAM_DressupTag",
             "CAM_DressupZCorrect",
@@ -216,7 +218,7 @@ class CAMWorkbench(Workbench):
         )
         threedcmdgroup = threedopcmdlist
         if Path.Preferences.experimentalFeaturesEnabled():
-            prepcmdlist.append("CAM_PathShape")
+            prepcmdlist.extend(["CAM_PathShape", "CAM_PathCompoundTC"])
             extracmdlist.extend(["CAM_Area", "CAM_Area_Workplane"])
             engravecmdlist.append("CAM_Flute")
 

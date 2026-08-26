@@ -26,7 +26,6 @@ import FreeCADGui
 import FreeCAD
 import Path.Op.Adaptive as PathAdaptive
 import Path.Op.Gui.Base as PathOpGui
-import Path.Op.Gui.FeatureExtension as PathFeatureExtensionsGui
 from PySide import QtCore
 
 import Path.Base.Gui.Util as PathGuiUtil
@@ -52,6 +51,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
             self.form.KeepToolDownRatio, obj, "KeepToolDownRatio"
         )
         self.StockToLeaveSpinBox = QuantitySpinBox(self.form.StockToLeave, obj, "StockToLeave")
+        self.ExtensionSpinBox = QuantitySpinBox(self.form.extension, obj, "ExtensionOffset")
 
         # Use user's preferred length unit
         self.form.stepOverDistance.setProperty(
@@ -75,6 +75,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         self.LiftDistanceSpinBox.updateWidget()
         self.KeepToolDownRatioSpinBox.updateWidget()
         self.StockToLeaveSpinBox.updateWidget()
+        self.ExtensionSpinBox.updateWidget()
 
     def getSignalsForUpdate(self, obj):
         """getSignalsForUpdate(obj) ... return list of signals for updating obj"""
@@ -91,6 +92,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         signals.append(self.form.LiftDistance.valueChanged)
         signals.append(self.form.KeepToolDownRatio.valueChanged)
         signals.append(self.form.StockToLeave.valueChanged)
+        signals.append(self.form.extension.valueChanged)
         if hasattr(self.form.ForceInsideOut, "checkStateChanged"):  # Qt version >= 6.7.0
             signals.append(self.form.ForceInsideOut.checkStateChanged)
             signals.append(self.form.useOutline.checkStateChanged)
@@ -160,6 +162,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         self.LiftDistanceSpinBox.updateProperty()
         self.KeepToolDownRatioSpinBox.updateProperty()
         self.StockToLeaveSpinBox.updateProperty()
+        self.ExtensionSpinBox.updateProperty()
 
         if obj.Side != str(self.form.Side.currentData()):
             obj.Side = str(self.form.Side.currentData())
@@ -192,11 +195,6 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         obj.setEditorMode("AdaptiveOutputState", 2)  # hide this property
         obj.setEditorMode("StopProcessing", 2)  # hide this property
         obj.setEditorMode("Stopped", 2)  # hide this property
-
-    def taskPanelBaseLocationPage(self, obj, features):
-        if not hasattr(self, "extensionsPanel"):
-            self.extensionsPanel = PathFeatureExtensionsGui.TaskPanelExtensionPage(obj, features)
-        return self.extensionsPanel
 
     def registerSignalHandlers(self, obj):
         self.form.KeepToolDownToggle.clicked.connect(self.keepToolDownRatioToggle)

@@ -26,8 +26,9 @@
 
 import FreeCAD
 import FreeCADGui
+import Part
 import Path
-import Path.Base.Drillable as Drillable
+from Path.Base.Drillable import isDrillable
 import math
 
 if False:
@@ -37,7 +38,7 @@ else:
     Path.Log.setLevel(Path.Log.Level.INFO, Path.Log.thisModule())
 
 
-class PathBaseGate(object):
+class PathBaseGate:
     pass
 
 
@@ -87,15 +88,12 @@ class ENGRAVEGate(PathBaseGate):
         except Exception:
             return False
 
-        if math.fabs(shape.Volume) < 1e-9 and len(shape.Wires) > 0:
+        if not sub and math.fabs(shape.Volume) < 1e-9 and shape.Wires:
             return True
 
-        if shape.ShapeType == "Edge":
-            return True
-
-        if sub:
+        if sub and sub[0:4] in ("Edge", "Face"):
             subShape = shape.getElement(sub)
-            if subShape.ShapeType == "Edge":
+            if Path.Geom.isHorizontal(subShape):
                 return True
 
         return False
@@ -133,7 +131,28 @@ class DRILLGate(PathBaseGate):
         subobj = shape.getElement(sub)
         if subobj.ShapeType not in ["Edge", "Face"]:
             return False
-        return Drillable.isDrillable(shape, subobj, vector=None, allowPartial=True)
+        return isDrillable(shape, subobj, vector=None, allowPartial=True)
+
+
+class HELIXGate(PathBaseGate):
+    def allow(self, doc, obj, sub):
+        Path.Log.debug("obj: {} sub: {}".format(obj, sub))
+        if not hasattr(obj, "Shape"):
+            return False
+        shape = obj.Shape
+        subShape = shape.getElement(sub)
+        if subShape.ShapeType not in ("Edge", "Face"):
+            return False
+        if isDrillable(shape, subShape, vector=None, allowPartial=True):
+            return True
+        elif subShape.ShapeType == "Edge" and isinstance(subShape.Curve, Part.Circle):
+            return True
+        elif subShape.ShapeType == "Face" and isinstance(
+            subShape.Surface, (Part.Cylinder, Part.Cone)
+        ):
+            return True
+
+        return False
 
 
 class TAPGate(PathBaseGate):
@@ -145,7 +164,7 @@ class TAPGate(PathBaseGate):
         subobj = shape.getElement(sub)
         if subobj.ShapeType not in ["Edge", "Face"]:
             return False
-        return Drillable.isDrillable(shape, subobj, vector=None)
+        return isDrillable(shape, subobj, vector=None)
 
 
 class FACEGate(PathBaseGate):
@@ -248,7 +267,7 @@ class TURNGate(PathBaseGate):
         if hasattr(obj, "Shape") and sub:
             shape = obj.Shape
             subobj = shape.getElement(sub)
-            return Drillable.isDrillable(shape, subobj, vector=None)
+            return isDrillable(shape, subobj, vector=None)
         else:
             return False
 
@@ -278,6 +297,12 @@ def eselect():
 
 def drillselect():
     FreeCADGui.Selection.addSelectionGate(DRILLGate())
+    if not Path.Preferences.suppressSelectionModeWarning():
+        FreeCAD.Console.PrintWarning("Drilling Select Mode\n")
+
+
+def helixselect():
+    FreeCADGui.Selection.addSelectionGate(HELIXGate())
     if not Path.Preferences.suppressSelectionModeWarning():
         FreeCAD.Console.PrintWarning("Drilling Select Mode\n")
 
@@ -375,7 +400,7 @@ def select(op):
     opsel["Drilling"] = drillselect
     opsel["Tapping"] = tapselect
     opsel["Engrave"] = engraveselect
-    opsel["Helix"] = drillselect
+    opsel["Helix"] = helixselect
     opsel["MillFace"] = pocketselect
     opsel["MillFacing"] = pocketselect
     opsel["Pocket"] = pocketselect

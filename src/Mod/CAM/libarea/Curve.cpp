@@ -113,8 +113,9 @@ bool CCurve::CheckForArc(
     Point p2(might_be_an_arc.back()->m_p);
     Circle c(p0, p1, p2);
 
-    const double max_arc_radius = 1.0 / CArea::get_accuracy();
-    if (c.m_radius > max_arc_radius) {
+    // const double max_arc_radius = 1 / CArea::get_accuracy();
+    // if (c.m_radius > max_arc_radius) {
+    if (c.m_radius > 100'000) {
         return false;
     }
 

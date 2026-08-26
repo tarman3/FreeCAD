@@ -50,6 +50,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         self.extraOffsetSpinBox = QuantitySpinBox(self.form.extraOffset, obj, "OffsetExtra")
         self.thresholdSpinBox = QuantitySpinBox(self.form.threshold, obj, "RetractThreshold")
         self.stepoverSpinBox = QuantitySpinBox(self.form.stepover, obj, "Stepover")
+        self.extensionSpinBox = QuantitySpinBox(self.form.extension, obj, "ExtensionOffset")
 
         FreeCADGui.ExpressionBinding(self.form.numPasses).bind(self.obj, "NumPasses")
 
@@ -75,6 +76,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         self.extraOffsetSpinBox.updateWidget()
         self.thresholdSpinBox.updateWidget()
         self.stepoverSpinBox.updateWidget()
+        self.extensionSpinBox.updateWidget()
 
     def getFields(self, obj):
         """getFields(obj) ... transfers values from UI to obj's properties"""
@@ -86,6 +88,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         self.extraOffsetSpinBox.updateProperty()
         self.thresholdSpinBox.updateProperty()
         self.stepoverSpinBox.updateProperty()
+        self.extensionSpinBox.updateProperty()
 
         obj.NumPasses = self.form.numPasses.value()
 
@@ -123,6 +126,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         signals.append(self.form.direction.currentIndexChanged)
         signals.append(self.form.extraOffset.editingFinished)
         signals.append(self.form.threshold.editingFinished)
+        signals.append(self.form.extension.editingFinished)
         signals.append(self.form.numPasses.editingFinished)
         signals.append(self.form.stepover.editingFinished)
         if hasattr(self.form.useCompensation, "checkStateChanged"):  # Qt version >= 6.7.0

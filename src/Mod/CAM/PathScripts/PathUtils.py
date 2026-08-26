@@ -27,7 +27,6 @@ from FreeCAD import Vector
 from PySide import QtCore
 import Part
 import Path
-import Path.Main.Job as PathJob
 import math
 from numpy import linspace
 import tsp_solver
@@ -448,6 +447,41 @@ def getOffsetArea(
     return offsetShape
 
 
+def getExtendedFaces(faces, offset, solids, cut_original=False, tol=0.01):
+    """getExtended(faces, offset, solids)
+    Get offset from face(s) and cut solids from it
+    Cut solids also from original face(s) if cut_original is True
+    Return list of original face(s) and extensions
+    """
+    extensions = []
+    if isinstance(faces, Part.Face):
+        faces = [faces]
+    for face in faces:
+        if cut_original:
+            cface = face.copy()
+            translate_dist = face.BoundBox.ZLength + Path.Geom.Tolerance
+            cface.translate(FreeCAD.Vector(0, 0, translate_dist))
+            cface = cface.cut(solids)
+            cface.translate(FreeCAD.Vector(0, 0, -translate_dist))
+            extensions.extend(cface.Faces)
+        else:
+            extensions.extend(face.Faces)
+        if not offset:
+            continue
+        plane = makeWorkplane(face)
+        oface = getOffsetArea(face, offset, plane=plane, tolerance=tol)
+        if not oface:
+            Path.Log.warning("Extension error: getOffsetArea() failed")
+            continue
+        ext = oface.cut(solids)
+        if ext.isNull() or not ext.Faces:
+            Path.Log.warning("Extension error: cut() failed")
+            continue
+        extensions.extend(ext.Faces)  # ext can be a Face or Shell
+
+    return extensions
+
+
 def reverseEdge(e):
     if isinstance(e.Curve, Part.Circle):
         arcstpt = e.valueAt(e.FirstParameter)
@@ -514,7 +548,9 @@ def findToolController(obj, proxy, name=None):
 def findParentJob(obj):
     """retrieves a parent job object for an operation or other Path object"""
     Path.Log.track()
-    if hasattr(obj, "Proxy") and isinstance(obj.Proxy, PathJob.ObjectJob):
+
+    jobModule = "Path.Main.Job"
+    if getattr(obj, "Proxy", None) and obj.Proxy.__module__ == jobModule:
         return obj
 
     # we need to traverse the document tree in reverse order:
@@ -527,8 +563,8 @@ def findParentJob(obj):
 
     for i in obj.InList:
         if (
-            hasattr(i, "Proxy")
-            and isinstance(i.Proxy, PathJob.ObjectJob)
+            getattr(i, "Proxy", None)
+            and i.Proxy.__module__ == jobModule
             and obj in [i.Operations, i.Model, i.Stock, i.SetupSheet, i.Tools]
         ):
             return i
@@ -543,11 +579,22 @@ def findParentJob(obj):
     return None
 
 
+def jobInstances():
+    """jobInstances() ... Return all Jobs in the current active document."""
+    if doc := FreeCAD.ActiveDocument:
+        return [
+            obj
+            for obj in doc.Objects
+            if getattr(obj, "Proxy", None) and obj.Proxy.__module__ == "Path.Main.Job"
+        ]
+    return []
+
+
 def GetJobs(jobname=None):
     """returns all jobs in the current document.  If name is given, returns that job"""
     if jobname:
-        return [job for job in PathJob.Instances() if job.Name == jobname]
-    return PathJob.Instances()
+        return [job for job in jobInstances() if job.Name == jobname]
+    return jobInstances()
 
 
 def addToJob(obj, jobname=None):
@@ -576,6 +623,27 @@ def addToJob(obj, jobname=None):
     if obj and job:
         job.Proxy.addOperation(obj)
     return job
+
+
+def getOperations(obj):
+    """getOperations() ... returns all operations from job or group, includes sub groups"""
+
+    def getOpsFromGroup(group):
+        operations = []
+        for candidate in group.Group:
+            if hasattr(candidate, "Path"):
+                operations.append(candidate)
+            elif hasattr(candidate, "Group"):
+                operations.extend(getOpsFromGroup(candidate))
+        return operations
+
+    if hasattr(obj, "Name") and obj.Name.startswith("Job"):
+        group = getattr(obj, "Operations", None)
+    elif hasattr(obj, "Group"):
+        group = obj
+    else:
+        group = None
+    return getOpsFromGroup(group) if group else []
 
 
 def sort_locations(locations, keys, attractors=None):

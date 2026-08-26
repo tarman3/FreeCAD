@@ -66,6 +66,7 @@ FeatureBaseModels = 0x0800  # Base
 FeatureLocations = 0x1000  # Locations
 FeatureCoolant = 0x2000  # Coolant
 FeatureDiameters = 0x4000  # Turning Diameters
+FeatureExtension = 0x8000  # Extension
 
 FeatureBaseGeometry = FeatureBaseVertexes | FeatureBaseFaces | FeatureBaseEdges
 
@@ -174,6 +175,7 @@ class ObjectOp(object):
         FeatureLocations     ... Base location support
         FeatureCoolant       ... Support for operation coolant
         FeatureDiameters     ... Support for turning operation diameters
+        FeatureExtension     ... Support for Extension
 
     The base class handles all base API and forwards calls to subclasses with
     an op prefix. For instance, an op is not expected to overwrite onChanged(),
@@ -260,6 +262,16 @@ class ObjectOp(object):
             QT_TRANSLATE_NOOP("App::Property", "Distance for collision detection"),
         )
 
+    def addExtension(self, obj):
+        obj.addProperty(
+            "App::PropertyLength",
+            "ExtensionOffset",
+            "Extension",
+            QT_TRANSLATE_NOOP(
+                "App::Property", "Extension for working area limited by the model shape"
+            ),
+        )
+
     def __init__(self, obj, name, parentJob=None):
         Path.Log.track()
 
@@ -334,6 +346,24 @@ class ObjectOp(object):
                 ),
             )
             self.addOpValues(obj, ["tooldia"])
+            obj.addProperty(
+                "App::PropertySpeed",
+                "HorizFeed",
+                "Feed",
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Feed rate for horizontal moves\nIf not 0, will overwrite value from Tool Controller.",
+                ),
+            )
+            obj.addProperty(
+                "App::PropertySpeed",
+                "VertFeed",
+                "Feed",
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Feed rate for vertical moves\nIf not 0, will overwrite value from Tool Controller.",
+                ),
+            )
 
         if FeatureCoolant & features:
             obj.addProperty(
@@ -402,6 +432,15 @@ class ObjectOp(object):
             )
             obj.addProperty(
                 "App::PropertyDistance",
+                "ClearanceHeightOut",
+                "Depth",
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Move to this height at the end of the operation",
+                ),
+            )
+            obj.addProperty(
+                "App::PropertyDistance",
                 "SafeHeight",
                 "Depth",
                 QT_TRANSLATE_NOOP("App::Property", "Rapid Safety Height between locations."),
@@ -437,6 +476,9 @@ class ObjectOp(object):
 
         if FeatureLinking & features:
             self.addLinking(obj)
+
+        if FeatureExtension & features:
+            self.addExtension(obj)
 
         # members being set later
         self.commandlist = None
@@ -589,6 +631,18 @@ class ObjectOp(object):
             )
             obj.StepDown = 0
 
+        if FeatureHeights & features and not hasattr(obj, "ClearanceHeightOut"):
+            obj.addProperty(
+                "App::PropertyDistance",
+                "ClearanceHeightOut",
+                "Depth",
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Move to this height at the end of the operation",
+                ),
+            )
+            self.applyExpression(obj, "ClearanceHeightOut", "ClearanceHeight")
+
         if FeatureLinking & features and not hasattr(obj, "CollisionAvoidanceStrategy"):
             self.addLinking(obj)
             for n in self.opPropertyEnumerations():
@@ -608,6 +662,11 @@ class ObjectOp(object):
                 ),
             )
             obj.Workplane = FreeCAD.Vector(0, 0, 1)
+
+        if FeatureExtension & features and not hasattr(obj, "ExtensionOffset"):
+            self.addExtension(obj)
+            if getattr(obj, "ExtensionFeature", None):
+                obj.ExtensionOffset = min(obj.ExtensionLengthDefault, obj.OpToolDiameter.Value / 2)
 
         self.setEditorModes(obj, features)
         self.opOnDocumentRestored(obj)
@@ -780,7 +839,7 @@ class ObjectOp(object):
         features = self.opFeatures(obj)
 
         if FeatureTool & features:
-            for op in job.Operations.Group[-2::-1]:
+            for op in PathUtils.getOperations(job)[-2::-1]:
                 obj.ToolController = PathUtil.toolControllerForOp(op)
                 if obj.ToolController:
                     break
@@ -820,6 +879,7 @@ class ObjectOp(object):
                     obj, "ClearanceHeight", job.SetupSheet.ClearanceHeightExpression
                 ):
                     obj.ClearanceHeight = "5 mm"
+                self.applyExpression(obj, "ClearanceHeightOut", "ClearanceHeight")
 
         if FeatureDiameters & features:
             obj.MinDiameter = "0 mm"
@@ -1122,8 +1182,16 @@ class ObjectOp(object):
                 )
                 return
             else:
-                self.vertFeed = tc.VertFeed.Value
-                self.horizFeed = tc.HorizFeed.Value
+                self.vertFeed = (
+                    obj.VertFeed.Value
+                    if hasattr(obj, "VertFeed") and obj.VertFeed.Value
+                    else tc.VertFeed.Value
+                )
+                self.horizFeed = (
+                    obj.HorizFeed.Value
+                    if hasattr(obj, "HorizFeed") and obj.HorizFeed.Value
+                    else tc.HorizFeed.Value
+                )
                 self.vertRapid = tc.VertRapid.Value
                 self.horizRapid = tc.HorizRapid.Value
                 tool = tc.Proxy.getTool(tc)
@@ -1233,7 +1301,7 @@ class ObjectOp(object):
 
         if self.commandlist and (FeatureHeights & self.opFeatures(obj)):
             # Let's finish by rapid to clearance...just for safety
-            self.commandlist.append(Path.Command("G0", {"Z": obj.ClearanceHeight.Value}))
+            self.commandlist.append(Path.Command("G0", {"Z": obj.ClearanceHeightOut.Value}))
 
         path = Path.Path(self.commandlist)
 
@@ -1245,7 +1313,6 @@ class ObjectOp(object):
         obj.Path = path
         obj.CycleTime = getCycleTimeEstimate(obj)
         self.job.Proxy.getCycleTime()
-        return result
 
     def addBase(self, obj, base, sub):
         Path.Log.track(obj, base, sub)
