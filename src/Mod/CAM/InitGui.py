@@ -149,7 +149,7 @@ class CAMWorkbench(Workbench):
             "CAM_Slot",
         ]
         threedopcmdlist = ["CAM_Pocket3D"]
-        engravecmdlist = ["CAM_Engrave", "CAM_Deburr", "CAM_Vcarve"]
+        engravecmdlist = ["CAM_Engrave", "CAM_Deburring", "CAM_Vcarve"]
         drillingcmdlist = ["CAM_Drilling", "CAM_ThreadMilling"]
         modcmdlist = ["CAM_OperationCopy", "CAM_Array", "CAM_SimpleCopy"]
         dressupcmdlist = [
@@ -226,7 +226,7 @@ class CAMWorkbench(Workbench):
         )
         threedcmdgroup = threedopcmdlist
         if Path.Preferences.experimentalFeaturesEnabled():
-            prepcmdlist.append("CAM_PathShape")
+            prepcmdlist.extend(["CAM_PathShape", "CAM_PathCompoundTC"])
             extracmdlist.extend(["CAM_Area", "CAM_Area_Workplane"])
             engravecmdlist.append("CAM_Flute")
 

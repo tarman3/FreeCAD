@@ -859,7 +859,7 @@ def Create(baseObject, name="DressupLeadInOut", mode=0):
 
     import Path.Dressup.Gui.LeadInOut as lead
     lead.Create(basePath)  # to show Task panel
-    lead.Create(basePath, 2)  # to skip Task panel
+    lead.Create(basePath, mode=2)  # to skip Task panel
     """
     if not baseObject.isDerivedFrom("Path::Feature"):
         Path.Log.error(

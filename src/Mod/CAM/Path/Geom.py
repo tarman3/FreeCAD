@@ -24,6 +24,8 @@ import FreeCAD
 import Path
 import math
 
+from Path.Base.MachineState import MachineState
+
 from FreeCAD import Vector
 import Constants
 
@@ -146,6 +148,27 @@ def edgesMatch(e0, e1, error=Tolerance):
         pointsCoincide(e0.Vertexes[i].Point, e1.Vertexes[i].Point, error)
         for i in range(len(e0.Vertexes))
     )
+
+
+def edgesSimilar(e0, e1, error=Tolerance):
+    """edgesSimilar(e0, e1, [error=Tolerance])
+    The same as edgesMatch(), but edges can be flipped."""
+    if e0.hashCode() == e1.hashCode():
+        # edges absolutely identical
+        return True
+    if type(e0.Curve) is not type(e1.Curve) or len(e0.Vertexes) != len(e1.Vertexes):
+        return False
+    if not isRoughly(e0.Length, e1.Length, error):
+        return False
+    e0p1 = e0.Vertexes[0].Point
+    e0p2 = e0.Vertexes[-1].Point
+    e1p1 = e1.Vertexes[0].Point
+    e1p2 = e1.Vertexes[-1].Point
+    for i in range(2):
+        if pointsCoincide(e0p1, e1p1, error) and pointsCoincide(e0p2, e1p2, error):
+            return True
+        e1p1, e1p2 = e1p2, e1p1
+    return False
 
 
 def edgeConnectsTo(edge, vector, error=Tolerance):
@@ -371,6 +394,14 @@ def cmdsForEdge(edge, flip=False, approximation=False, hSpeed=0, vSpeed=0, tol=0
         # use original edge if list is empty
         edges = [edge]
 
+    # split arcs (circles) with angle greater than pi
+    for i in reversed(range(len(edges))):
+        e = edges[i]
+        if isinstance(e.Curve, Part.Circle) and isStrictlyGreater(
+            e.LastParameter - e.FirstParameter, math.pi
+        ):
+            edges[i : i + 1] = splitArcAt(e, e.valueAt((e.FirstParameter + e.LastParameter) / 2))
+
     if flip:
         edges.reverse()
 
@@ -479,52 +510,17 @@ def edgeForCmd(cmd, startPoint):
         center = startPoint + commandEndPoint(cmd, Vector(0, 0, 0), "I", "J", "K")
         A = xy(startPoint - center)
         B = xy(endPoint - center)
-        d = -B.x * A.y + B.y * A.x
-
-        if isRoughly(d, 0, 0.005):
-            # Path.Log.debug(
-            #    "Half circle arc at: (%.2f, %.2f, %.2f)" % (center.x, center.y, center.z)
-            # )
-            # we're dealing with half a circle here
-            angle = getAngle(A) + math.pi / 2
-            if cmd.Name in CmdMoveCW:
-                angle -= math.pi
-        else:
-            C = A + B
-            angle = getAngle(C)
-            # Path.Log.debug(
-            #    "Arc (%8f) at: (%.2f, %.2f, %.2f) -> angle=%f"
-            #    % (d, center.x, center.y, center.z, angle / math.pi)
-            # )
-
         R = A.Length
-        # Path.Log.debug(
-        #    "arc: p1=(%.2f, %.2f) p2=(%.2f, %.2f) -> center=(%.2f, %.2f)"
-        #    % (startPoint.x, startPoint.y, endPoint.x, endPoint.y, center.x, center.y)
-        # )
-        # Path.Log.debug("arc: A=(%.2f, %.2f) B=(%.2f, %.2f) -> d=%.2f" % (A.x, A.y, B.x, B.y, d))
-        # Path.Log.debug("arc: R=%.2f angle=%.2f" % (R, angle / math.pi))
         if isRoughly(startPoint.z, endPoint.z):
-            midPoint = center + Vector(math.cos(angle), math.sin(angle), 0) * R
-            # Path.Log.debug(
-            #    "arc: (%.2f, %.2f) -> (%.2f, %.2f) -> (%.2f, %.2f)"
-            #    % (
-            #        startPoint.x,
-            #        startPoint.y,
-            #        midPoint.x,
-            #        midPoint.y,
-            #        endPoint.x,
-            #        endPoint.y,
-            #    )
-            # )
-            # Path.Log.debug("StartPoint:{}".format(startPoint))
-            # Path.Log.debug("MidPoint:{}".format(midPoint))
-            # Path.Log.debug("EndPoint:{}".format(endPoint))
-
-            if pointsCoincide(startPoint, endPoint, 0.001):
+            if pointsCoincide(startPoint, endPoint):
                 return Part.makeCircle(R, center, FreeCAD.Vector(0, 0, 1))
+            # midpoint is half the sweep from A, in the G2/G3 direction
+            if cmd.Name in CmdMoveCW:
+                angle = getAngle(A) - diffAngle(getAngle(A), getAngle(B), "CW") / 2
             else:
-                return Part.Edge(Part.Arc(startPoint, midPoint, endPoint))
+                angle = getAngle(A) + diffAngle(getAngle(A), getAngle(B), "CCW") / 2
+            midPoint = center + Vector(math.cos(angle), math.sin(angle), 0) * R
+            return Part.Edge(Part.Arc(startPoint, midPoint, endPoint))
 
         # It's a Helix
         # print('angle: A=%.2f B=%.2f' % (getAngle(A)/math.pi, getAngle(B)/math.pi))
@@ -629,19 +625,23 @@ def arcToHelix(edge, z0, z1):
     """arcToHelix(edge, z0, z1)
     Assuming edge is an arc it'll return a helix matching the arc starting at z0 and rising/falling to z1.
     """
+    if isRoughly(z0, z1):
+        return edge
+    height = z1 - z0
+    arc_angle = edge.LastParameter - edge.FirstParameter
+    pitch = height * math.fabs(math.tau / arc_angle)
+    radius = edge.Curve.Radius
+    cw = edge.Curve.Axis.z < 0
+    helix_wire = Part.makeHelix(pitch, height, radius, 0, cw)
+    helix_edge = helix_wire.Edges[0]
+    start_point = edge.valueAt(edge.FirstParameter)
+    center = edge.Curve.Location
+    rotation_angle = math.degrees(getAngle(xy(start_point - center)))
+    helix_edge.rotate(Vector(), Vector(0, 0, 1), rotation_angle)
+    helix_start_point = helix_edge.valueAt(helix_edge.FirstParameter)
+    v = start_point - helix_start_point + Vector(0, 0, z0 - start_point.z)
 
-    p1 = edge.valueAt(edge.FirstParameter)
-    # p2 = edge.valueAt(edge.LastParameter)
-
-    cmd = cmdsForEdge(edge)[0]
-    params = cmd.Parameters
-    params.update({"Z": z1, "K": (z1 - z0) / 2})
-    command = Path.Command(cmd.Name, params)
-
-    # print("- (%.2f, %.2f, %.2f) - (%.2f, %.2f, %.2f): %.2f:%.2f" % (edge.Vertexes[0].X, edge.Vertexes[0].Y, edge.Vertexes[0].Z, edge.Vertexes[1].X, edge.Vertexes[1].Y, edge.Vertexes[1].Z, z0, z1))
-    # print("- %s -> %s" % (cmd, command))
-
-    return edgeForCmd(command, Vector(p1.x, p1.y, z0))
+    return helix_edge.translated(v)
 
 
 def helixToArc(edge, z=0):
@@ -695,9 +695,8 @@ def splitEdgeAt(edge, pt):
 
 def splitArcEdge(edge, tol=0.1):
     """splitArcEdge(edge) -> List(Part.Edge)
-    Returns a list of arc edges, angle each of them not great than 'maxArcAngle'
-    Useful for approximation not horizontal arcs and circles
-    Return a list with original edge, if arc angle less or equal 'maxArcAngle'"""
+    Returns a list of arc edges, which can be converted to G2/G3 moves with given tolerance
+    Useful for approximation not horizontal arcs and circles"""
 
     def isPrecise(arc):
         # compare z of several points of arc and G2 move
@@ -926,11 +925,11 @@ def combineHorizontalFaces(faces, keepOrder=False, z=0, tol=0.01):
     horizontal = []
     offset = 10.0
 
-    for f in faces:  # translate all faces to z
-        f.translate(FreeCAD.Vector(0, 0, z - f.BoundBox.ZMin))
+    # Make faces horizontal and translate to z
+    hor_faces = [makeHorizontal(f, z) for f in faces]
 
     # Make compound from incoming shapes
-    allFaces = Part.makeCompound(faces)
+    allFaces = Part.makeCompound(hor_faces)
 
     # Ckeck if incoming shapes have area
     if isRoughly(allFaces.Area, 0):
@@ -940,15 +939,15 @@ def combineHorizontalFaces(faces, keepOrder=False, z=0, tol=0.01):
 
     # Make boundbox face with offset and cut incoming faces from it
     bboxFace = makeBoundBoxFace(allFaces.BoundBox, offset, z)
-    cut = bboxFace.cut(faces, tol)
+    cut = bboxFace.cut(hor_faces, tol)
     wires = [w for w in cut.Wires[1:] if w.isClosed()]  # exclude open wires from "bad" shape
     horizontal = Part.makeFace(wires, "Part::FaceMakerBullseye").Faces
 
     # restore order
     if keepOrder and len(horizontal) > 1:
-        ordered = [None] * len(faces)
+        ordered = [None] * len(hor_faces)
         for face in horizontal:
-            for i, f in enumerate(faces):
+            for i, f in enumerate(hor_faces):
                 if face.BoundBox.intersect(f.BoundBox) and face.isInside(
                     f.Vertexes[0].Point, Tolerance, False
                 ):
@@ -961,3 +960,86 @@ def combineHorizontalFaces(faces, keepOrder=False, z=0, tol=0.01):
             Path.Log.info(translate("PathGeom", "Can not restore order of faces."))
 
     return horizontal
+
+
+def makeHorizontal(shape, z=0):
+    """makeHorizontal(shape, z) ... returns flat horizontal shape (edge, wire, face) translated to z"""
+    bb = shape.BoundBox
+    if isRoughly(bb.ZLength, 0):  # shape already flat and horizontal
+        hor_shape = shape
+    else:
+        ext = shape.extrude(FreeCAD.Vector(0, 0, 2 + bb.ZLength))
+        wires = ext.slice(FreeCAD.Vector(0, 0, 1), bb.ZMax + 1)
+        if isinstance(shape, Part.Face):  # shape is a Face
+            hor_shape = Part.makeFace(wires, "Part::FaceMakerBullseye").Faces[0]
+        elif isinstance(shape, Part.Wire):  # shape is a Wire
+            hor_shape = wires[0]
+        else:  # shape is a Edge
+            hor_shape = wires[0].Edges[0]
+
+    return hor_shape.translated(FreeCAD.Vector(0, 0, z - hor_shape.BoundBox.ZMax))
+
+
+def fuseHorizontalFaces(faces, z=0):
+    """fuseHorizontalFaces(faces) ... fuse faces and remove splitters
+    Faces translated to specified height, default 0
+    Not work with bspline and bezier"""
+    for f in faces:
+        f.translate(FreeCAD.Vector(0, 0, z - f.BoundBox.ZMin))
+
+    if len(faces) < 2:
+        return faces
+
+    fusedFaces = []
+    compounds = combineConnectedShapes(faces)
+    for comp in compounds:
+        if len(comp.Faces) > 1:
+            fuse = comp.Faces[0].fuse(comp.Faces[1:])
+            fusedFaces.extend(fuse.removeSplitter().Faces)
+        else:
+            fusedFaces.extend(comp.Faces)
+
+    return fusedFaces
+
+
+def filterStraightArcs(cmds, deflection=None):
+    """Replace G2/G3 commands with curvature less than 'deflection' by G1 moves."""
+    if not deflection:
+        prefGrp = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/CAM")
+        deflection = prefGrp.GetFloat("LibAreaCurveAccuracy", 0.01)
+
+    machine = MachineState()
+
+    for i in range(len(cmds)):
+        if cmds[i].Name in CmdMoveArc:
+            p3 = None
+            position = machine.getPosition()
+            try:
+                edge = edgeForCmd(cmds[i], position)
+            except Exception:
+                # error can be related with precision, so use G1
+                edge = None
+                p3 = position
+                p3.x = cmds[i].x if cmds[i].x is not None else p3.x
+                p3.y = cmds[i].y if cmds[i].y is not None else p3.y
+                p3.z = cmds[i].z if cmds[i].z is not None else p3.z
+
+            if edge and not edge.isClosed():
+                firstParameter, lastParameter = edge.FirstParameter, edge.LastParameter
+                p1 = edge.valueAt(firstParameter)
+                p2 = edge.valueAt((firstParameter + lastParameter) / 2)
+                p3 = edge.valueAt(lastParameter)
+                d = p2.distanceToPoint(p1 + (p3 - p1) / 2)
+                if d > deflection:
+                    p3 = None
+
+            if p3:
+                print(round(d, 5), " ", cmds[i])
+                params = {"X": p3.x, "Y": p3.y, "Z": p3.z}
+                if cmds[i].F:
+                    params.update({"F": cmds[i].F})
+                cmds[i] = Path.Command("G1", params)
+
+        machine.addCommand(cmds[i])
+
+    return cmds

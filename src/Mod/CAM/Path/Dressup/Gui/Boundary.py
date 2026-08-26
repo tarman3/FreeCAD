@@ -28,7 +28,6 @@ import FreeCADGui
 import Path
 import Path.Dressup.Boundary as PathDressupPathBoundary
 import Path.Dressup.Utils as PathDressup
-import PathGui
 
 if False:
     Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
@@ -40,7 +39,7 @@ else:
 translate = FreeCAD.Qt.translate
 
 
-class TaskPanel(object):
+class TaskPanel:
     def __init__(self, obj, viewProvider):
         self.obj = obj
         self.viewProvider = viewProvider
@@ -113,7 +112,6 @@ class TaskPanel(object):
 
     def updateStockEditor(self, index, force=False):
         import Path.Main.Gui.Job as PathJobGui
-        import Path.Main.Stock as PathStock
 
         def setupFromBaseEdit():
             Path.Log.track(index, force)
@@ -201,7 +199,7 @@ class TaskPanel(object):
         self.form.stockCylinderHeight.textChanged.connect(self.setDirty)
 
 
-class DressupPathBoundaryViewProvider(object):
+class DressupPathBoundaryViewProvider:
     def __init__(self, vobj):
         self.attach(vobj)
 
@@ -225,12 +223,15 @@ class DressupPathBoundaryViewProvider(object):
         return True
 
     def setEdit(self, vobj, mode=0):
-        panel = TaskPanel(vobj.Object, self)
-        self.setupTaskPanel(panel)
+        if mode == 1:
+            FreeCADGui.runCommand("Std_TransformManip")
+        elif mode == 0:
+            panel = TaskPanel(vobj.Object, self)
+            self.setupTaskPanel(panel)
         return True
 
     def unsetEdit(self, vobj, mode=0):
-        if self.panel:
+        if mode == 0 and self.panel:
             self.panel.abort()
 
     def setupTaskPanel(self, panel):
@@ -276,12 +277,7 @@ class CommandPathDressupPathBoundary:
         if not op:
             return False
         baseOp = PathDressup.baseOp(op)
-        if not hasattr(baseOp, "ClearanceHeight"):
-            return False
-        if not hasattr(baseOp, "SafeHeight"):
-            return False
-
-        return True
+        return hasattr(baseOp, "ClearanceHeight") and hasattr(baseOp, "SafeHeight")
 
     def Activated(self):
         # check that the selection contains exactly what we want

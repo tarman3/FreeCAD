@@ -12,6 +12,7 @@
         <file>icons/CAM_Area_Workplane.svg</file>
         <file>icons/CAM_Area.svg</file>
         <file>icons/CAM_Array.svg</file>
+        <file>icons/CAM_ArrayMTC.svg</file>
         <file>icons/CAM_BFastForward.svg</file>
         <file>icons/CAM_BPause.svg</file>
         <file>icons/CAM_BPlay.svg</file>
@@ -20,6 +21,7 @@
         <file>icons/CAM_BaseGeometry.svg</file>
         <file>icons/CAM_Comment.svg</file>
         <file>icons/CAM_Compound.svg</file>
+        <file>icons/CAM_CompoundTC.svg</file>
         <file>icons/CAM_Copy.svg</file>
         <file>icons/CAM_Custom.svg</file>
         <file>icons/CAM_Datums.svg</file>
@@ -135,9 +137,11 @@
         <file>panels/PageDepthsEdit.ui</file>
         <file>panels/PageDiametersEdit.ui</file>
         <file>panels/PageHeightsEdit.ui</file>
+        <file>panels/PageOpArray.ui</file>
         <file>panels/PageOpAdaptiveEdit.ui</file>
         <file>panels/PageOpCustomEdit.ui</file>
         <file>panels/PageOpDeburrEdit.ui</file>
+        <file>panels/PageOpDeburringEdit.ui</file>
         <file>panels/PageOpDrillingEdit.ui</file>
         <file>panels/PageOpEngraveEdit.ui</file>
         <file>panels/PageOpHelixEdit.ui</file>
