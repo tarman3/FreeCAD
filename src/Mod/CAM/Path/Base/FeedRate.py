@@ -40,7 +40,7 @@ else:
     Path.Log.setLevel(Path.Log.Level.INFO, Path.Log.thisModule())
 
 
-def setFeedRate(commandlist, ToolController, onlyMissedRapid=False):
+def setFeedRate(commandlist, ToolController, horizFeed=0, vertFeed=0, onlyMissedRapid=False):
     """Set the appropriate feed rate for a list of Path commands using the information from a Tool Controller
 
     Every motion command in the list will have a feed rate parameter added or overwritten based
@@ -50,6 +50,11 @@ def setFeedRate(commandlist, ToolController, onlyMissedRapid=False):
     Tapping cycles are left untouched, as their F word is the thread pitch.
 
     onlyMissedRapid allows update rapid moves which missed feed rate."""
+
+    HorizFeed = horizFeed.Value if horizFeed else ToolController.HorizFeed.Value
+    VertFeed = vertFeed.Value if vertFeed else ToolController.VertFeed.Value
+    HorizRapid = ToolController.HorizRapid.Value
+    VertRapid = ToolController.VertRapid.Value
 
     def _isVertical(currentposition, command):
         x = command.Parameters.get("X", currentposition.x)
@@ -76,17 +81,9 @@ def setFeedRate(commandlist, ToolController, onlyMissedRapid=False):
         if command.Name in Path.Geom.CmdMoveDrill:
             rate = ToolController.VertFeed.Value
         elif _isVertical(machine.getPosition(), command):
-            rate = (
-                ToolController.VertRapid.Value
-                if command.Name in Path.Geom.CmdMoveRapid
-                else ToolController.VertFeed.Value
-            )
+            rate = VertRapid if command.Name in Path.Geom.CmdMoveRapid else VertFeed
         else:
-            rate = (
-                ToolController.HorizRapid.Value
-                if command.Name in Path.Geom.CmdMoveRapid
-                else ToolController.HorizFeed.Value
-            )
+            rate = HorizRapid if command.Name in Path.Geom.CmdMoveRapid else HorizFeed
 
         if not onlyMissedRapid or (
             onlyMissedRapid
