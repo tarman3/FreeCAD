@@ -43,11 +43,13 @@ def Startup():
         from Path.Base.Gui import SetupSheet
         from Path.Dressup.Gui import Array
         from Path.Dressup.Gui import AxisMap
+        from Path.Dressup.Gui import Boundary2
         from Path.Dressup.Gui import DogboneII
         from Path.Dressup.Gui import Dragknife
         from Path.Dressup.Gui import LeadInOut
         from Path.Dressup.Gui import Mirror
         from Path.Dressup.Gui import Boundary
+        from Path.Dressup.Gui import PlungeMilling
         from Path.Dressup.Gui import RampEntry
         from Path.Dressup.Gui import Tags
         from Path.Dressup.Gui import ZCorrect
@@ -70,6 +72,7 @@ def Startup():
         from Path.Op.Gui import MillFace
         from Path.Op.Gui import MillFacing
         from Path.Op.Gui import PathShape
+        from Path.Op.Gui import PathCompoundTC
         from Path.Op.Gui import Pocket
         from Path.Op.Gui import PocketShape
         from Path.Op.Gui import Probe

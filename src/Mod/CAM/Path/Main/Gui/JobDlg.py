@@ -192,6 +192,7 @@ class JobCreate:
         self.dialog.setWindowTitle(title)
 
     def setupModel(self, job=None):
+        from PathScripts.PathUtils import jobInstances
 
         if job:
             preSelected = Counter(
@@ -252,7 +253,7 @@ class JobCreate:
                     if itemSelected:
                         expand2Ds = True
 
-        for j in sorted(PathJob.Instances(), key=lambda x: x.Label):
+        for j in sorted(jobInstances(), key=lambda x: x.Label):
             if j != job:
                 item0 = QtGui.QStandardItem()
                 item1 = QtGui.QStandardItem()
@@ -366,8 +367,18 @@ class JobCreate:
             return name
 
     def setupTemplate(self):
+        selectTemplate = Path.Preferences.defaultJobTemplate()
+        extraPath = None
+        if os.path.isdir(selectTemplate):
+            extraPath = selectTemplate
+        elif os.path.isfile(selectTemplate):
+            extraPath = os.path.dirname(selectTemplate)
+        searchPaths = Path.Preferences.searchPaths()
+        if extraPath and extraPath not in searchPaths:
+            searchPaths.append(extraPath)
+
         templateFiles = []
-        for path in Path.Preferences.searchPaths():
+        for path in searchPaths:
             cleanPaths = [
                 f.replace("\\", "/") for f in self.templateFilesIn(path)
             ]  # Standardize slashes used across os platforms

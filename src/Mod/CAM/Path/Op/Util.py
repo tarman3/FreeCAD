@@ -1,26 +1,24 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2018 sliptonic <shopinthewoods@gmail.com>
+# SPDX-FileCopyrightText: 2021 Schildkroet
+# SPDX-FileNotice: Part of the FreeCAD project.
 
-# ***************************************************************************
-# *   Copyright (c) 2018 sliptonic <shopinthewoods@gmail.com>               *
-# *   Copyright (c) 2021 Schildkroet                                        *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 import FreeCAD
 import Path
@@ -210,6 +208,14 @@ def orientWire(w, forward=True):
     return wire
 
 
+def discretizeWire(wire, tolerance=0.01):
+    """discretizeWire(wire) ... discretize any non-line edges with lines."""
+    vertexes = wire.discretize(Deflection=tolerance)
+    line_edges = [Part.makeLine(vertexes[i], vertexes[i + 1]) for i in range(len(vertexes) - 1)]
+
+    return Part.Wire(line_edges)
+
+
 def approximateWire(wire, tolerance=0.01):
     """approximateWire approximates any non-line/arc edges with lines or arcs.
     Edges that are lines or circular arcs are kept as-is.
@@ -270,8 +276,8 @@ def offsetWire(wire, base, offset, forward, Side=None, tolerance=0.01):
     """
     Path.Log.track("offsetWire")
 
-    # Pre-process the wire: approximate any non-line/arc edges with arcs and lines
-    wire = approximateWire(wire, tolerance)
+    # discretize wire to fix too big value of connection tolerance
+    wire = discretizeWire(wire, tolerance)
 
     if len(wire.Edges) == 1:
         edge = wire.Edges[0]
@@ -417,15 +423,12 @@ def offsetWire(wire, base, offset, forward, Side=None, tolerance=0.01):
 
     # find edges that are not inside the shape
     common = base.common(owire)
-    insideEndpoints = [e.lastVertex().Point for e in common.Edges]
-    insideEndpoints.append(common.Edges[0].firstVertex().Point)
+    insideEndpoints = [v.Point for v in common.Vertexes]
 
     def isInside(edge):
-        p0 = edge.firstVertex().Point
-        p1 = edge.lastVertex().Point
-        for p in insideEndpoints:
-            if Path.Geom.pointsCoincide(p, p0, 0.01) or Path.Geom.pointsCoincide(p, p1, 0.01):
-                return True
+        candidates = (edge.firstVertex().Point, edge.lastVertex().Point)
+        if any(Path.Geom.pointsCoincide(p, c, 0.01) for p in insideEndpoints for c in candidates):
+            return True
         return False
 
     outside = [e for e in owire.Edges if not isInside(e)]
@@ -551,13 +554,15 @@ def getClearedAreas(currentOp, bbox):
     non-Z-up Workplane the path's leading rotary G0 is stripped before
     walking so positions are read in the same rotated frame as bbox.
     """
+    from PathScripts.PathUtils import getOperations
+
     clearedAreas = []
     job = currentOp.Proxy.job
     z = bbox.ZMin + job.GeometryTolerance.getValueAs("mm")
     z_up = FreeCAD.Vector(0, 0, 1)
     currentWp = getattr(currentOp, "Workplane", z_up)
     rotated = not currentWp.isEqual(z_up, 1e-6)
-    for op in job.Operations.Group:
+    for op in getOperations(job):
         baseOp = PathDressup.baseOp(op)
         if baseOp.Name == currentOp.Name:
             break
@@ -621,12 +626,12 @@ def getOpSide(obj, default="Outside"):
                 return "Outside"
             # check if vertical faces creates a closed area
             fzMin = min(e.BoundBox.ZMin for f in vFaces for e in f.Edges)
-            bEdges = [e for f in vFaces for e in f.Edges if isRoughly(e.BoundBox.ZMax, fzMin)]
-            wire = Part.Wire(Part.__sortEdges__(bEdges))
-            if not wire.isClosed():  # for open area always offer 'Outside'
-                return "Outside"
-            if volume < 0 and not isRoughly(volume, 0):  # negative volume forms inner area
-                return "Inside"
+            if bEdges := [e for f in vFaces for e in f.Edges if isRoughly(e.BoundBox.ZMax, fzMin)]:
+                wire = Part.Wire(Part.__sortEdges__(bEdges))
+                if not wire.isClosed():  # for open area always offer 'Outside'
+                    return "Outside"
+                if volume < 0 and not isRoughly(volume, 0):  # negative volume forms inner area
+                    return "Inside"
         if hFaces:
             vFaces = getVerticalFaces(hFaces[0].OuterWire.Edges, base.Shape)
             volume = Part.Compound(vFaces).Volume

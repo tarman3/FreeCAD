@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # SPDX-FileCopyrightText: 2025 sliptonic sliptonic@freecad.org
 # SPDX-FileNotice: Part of the FreeCAD project.
@@ -266,15 +265,6 @@ def get_angled_polygon(wire, angle):
     return bounding_wire
 
 
-def calculate_engagement_offset(tool_diameter, stepover_percent):
-    """Calculate the engagement offset for proper tool engagement.
-
-    For 50% stepover, engagement should be 50% of tool diameter.
-    engagement_offset is how much of the tool is NOT engaged.
-    """
-    return tool_diameter * (1.0 - stepover_percent / 100.0)
-
-
 def validate_inputs(
     wire,
     tool_diameter,
@@ -405,35 +395,69 @@ def project_bounds(wire, vec, origin):
     return (min(ts), max(ts))
 
 
-def generate_t_values(wire, step_vec, tool_diameter, stepover_percent, origin):
+def generate_t_values(wire, step_vec, tool_diameter, stepover_percent, origin, end_at_center=False):
+    print("generate_t_values")
     """Generate step positions along step_vec with engagement offset and stepover.
 
-    The first pass engages (100 - stepover_percent)% of the tool diameter.
-    For 50% stepover, first pass engages 50% of tool diameter.
-    Tool center is positioned so the engaged portion touches the polygon edge.
+    end_at_center uses for bidirectinal pattern, passes starts at sides and ends near center
+
+    If only one pass created, place it at center
     """
     tool_radius = tool_diameter / 2.0
     stepover = tool_diameter * (stepover_percent / 100.0)
     min_t, max_t = project_bounds(wire, step_vec, origin)
+    print("  min_t", min_t, "  max_t", max_t)
 
     # Calculate how much of the tool should engage on first pass
     # For 20% stepover: engage 20% of diameter
     # For 50% stepover: engage 50% of diameter
     engagement_amount = tool_diameter * (stepover_percent / 100.0)
+    print("  engagement_amount", engagement_amount)
 
     # Start position: tool center positioned so engagement_amount reaches polygon edge
     # Tool center at: min_t - tool_radius + engagement_amount
     # This positions the engaged portion at the polygon edge
-    t = min_t - tool_radius + engagement_amount
     t_end = max_t + tool_radius - engagement_amount
 
-    values = []
     # Guard against zero/negative stepover
     if stepover <= 0:
-        return [t]
-    while t <= t_end + 1e-9:
-        values.append(t)
-        t += stepover
+        Path.Log.warning("Zero/negative stepover")
+        return []
+
+    if end_at_center:
+        t = t_end
+        print("t_start", -t, "  t_end", t)
+        print()
+        values = [-t, +t]
+        while t - tool_radius > -t + tool_radius and not Path.Geom.isRoughly(
+            t - tool_radius, -t + tool_radius
+        ):
+            t -= stepover
+            print("  t", t)
+            print("    -t+radius", -t + tool_radius, "  +t-radius", t - tool_radius)
+            values.append(-t)
+            values.append(+t)
+        print()
+        print("  values", [round(t, 2) for t in values])
+        if (
+            values[0] + tool_radius > max_t or Path.Geom.isRoughly(values[0] + tool_radius, max_t)
+        ) or (values[-2] + tool_radius > values[-1] - tool_radius + stepover):
+            print("  !!! removed", values[-1])
+            # area cleared by previous pass and last pass can be removed
+            del values[-1]
+        values.sort()
+    else:
+        t = min_t - tool_radius + engagement_amount
+        print("  t", t)
+        values = [t]
+        while t + tool_radius < max_t and not Path.Geom.isRoughly(t + tool_radius, max_t):
+            t += stepover
+            values.append(t)
+            print("    t", round(t, 2), "  t + radius", round(t + tool_radius, 2))
+
+    if len(values) == 1:  # single pass create at center
+        values = [0]
+
     return values
 
 

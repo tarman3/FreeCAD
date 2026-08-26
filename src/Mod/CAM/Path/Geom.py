@@ -1,30 +1,30 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-FileCopyrightText: 2016 sliptonic <shopinthewoods@gmail.com>
+# SPDX-FileCopyrightText: 2021 Schildkroet
+# SPDX-FileNotice: Part of the FreeCAD project.
 
-# ***************************************************************************
-# *   Copyright (c) 2016 sliptonic <shopinthewoods@gmail.com>               *
-# *   Copyright (c) 2021 Schildkroet                                        *
-# *                                                                         *
-# *   This program is free software; you can redistribute it and/or modify  *
-# *   it under the terms of the GNU Lesser General Public License (LGPL)    *
-# *   as published by the Free Software Foundation; either version 2 of     *
-# *   the License, or (at your option) any later version.                   *
-# *   for detail see the LICENCE text file.                                 *
-# *                                                                         *
-# *   This program is distributed in the hope that it will be useful,       *
-# *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# *   GNU Library General Public License for more details.                  *
-# *                                                                         *
-# *   You should have received a copy of the GNU Library General Public     *
-# *   License along with this program; if not, write to the Free Software   *
-# *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
-# *   USA                                                                   *
-# *                                                                         *
-# ***************************************************************************
+################################################################################
+#                                                                              #
+#   FreeCAD is free software: you can redistribute it and/or modify            #
+#   it under the terms of the GNU Lesser General Public License as             #
+#   published by the Free Software Foundation, either version 2.1              #
+#   of the License, or (at your option) any later version.                     #
+#                                                                              #
+#   FreeCAD is distributed in the hope that it will be useful,                 #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty                #
+#   of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                    #
+#   See the GNU Lesser General Public License for more details.                #
+#                                                                              #
+#   You should have received a copy of the GNU Lesser General Public           #
+#   License along with FreeCAD. If not, see https://www.gnu.org/licenses       #
+#                                                                              #
+################################################################################
 
 import FreeCAD
 import Path
 import math
+
+from Path.Base.MachineState import MachineState
 
 from FreeCAD import Vector
 import Constants
@@ -124,6 +124,27 @@ def edgesMatch(e0, e1, error=Tolerance):
         pointsCoincide(e0.Vertexes[i].Point, e1.Vertexes[i].Point, error)
         for i in range(len(e0.Vertexes))
     )
+
+
+def edgesSimilar(e0, e1, error=Tolerance):
+    """edgesSimilar(e0, e1, [error=Tolerance])
+    The same as edgesMatch(), but edges can be flipped."""
+    if e0.hashCode() == e1.hashCode():
+        # edges absolutely identical
+        return True
+    if type(e0.Curve) is not type(e1.Curve) or len(e0.Vertexes) != len(e1.Vertexes):
+        return False
+    if not isRoughly(e0.Length, e1.Length, error):
+        return False
+    e0p1 = e0.Vertexes[0].Point
+    e0p2 = e0.Vertexes[-1].Point
+    e1p1 = e1.Vertexes[0].Point
+    e1p2 = e1.Vertexes[-1].Point
+    for i in range(2):
+        if pointsCoincide(e0p1, e1p1, error) and pointsCoincide(e0p2, e1p2, error):
+            return True
+        e1p1, e1p2 = e1p2, e1p1
+    return False
 
 
 def edgeConnectsTo(edge, vector, error=Tolerance):
@@ -288,8 +309,7 @@ def speedBetweenPoints(p0, p1, hSpeed, vSpeed):
     while pitch > 1:
         pitch = pitch - 1
     Path.Log.debug(
-        "  pitch = %g %g (%.2f, %.2f, %.2f) -> %.2f"
-        % (pitch, math.atan2(xy(d).Length, d.z), d.x, d.y, d.z, xy(d).Length)
+        f"  pitch = {pitch:g} {math.atan2(xy(d).Length, d.z):g} ({d.x:.2f}, {d.y:.2f}, {d.x:.2f}) -> {xy(d).Length:.2f}"
     )
     speed = vSpeed + pitch * (hSpeed - vSpeed)
     if speed > hSpeed and speed > vSpeed:
@@ -548,8 +568,9 @@ def wiresForPath(path, startPoint=Vector(0, 0, 0)):
         edges = []
         for cmd in path.Commands:
             if cmd.Name in CmdMove:
-                edges.append(edgeForCmd(cmd, startPoint))
-                startPoint = commandEndPoint(cmd, startPoint)
+                if edge := edgeForCmd(cmd, startPoint):
+                    edges.append(edge)
+                    startPoint = commandEndPoint(cmd, startPoint)
             elif cmd.Name in CmdMoveRapid:
                 if len(edges) > 0:
                     wires.append(Part.Wire(edges))
@@ -557,6 +578,53 @@ def wiresForPath(path, startPoint=Vector(0, 0, 0)):
                 startPoint = commandEndPoint(cmd, startPoint)
         if edges:
             wires.append(Part.Wire(edges))
+    return wires
+
+
+def _wiresForPath(path, startPoint=Vector(0, 0, 0)):
+    """wiresForPath(path, [startPoint=Vector(0,0,0)])
+    Returns a collection of wires, each representing a continuous cutting Path in path."""
+    wires = []
+    if hasattr(path, "Commands"):
+        edges = []
+        points = []
+        for cmd in path.Commands:
+            if cmd.Name in CmdMove:
+                edges.append(edgeForCmd(cmd, startPoint))
+                startPoint = commandEndPoint(cmd, startPoint)
+                points.append(startPoint)
+                if any(pointsCoincide(p, startPoint) for p in points[:-1]):
+                    wires.append(Part.Wire(edges))
+                    edges = []
+                    points = []
+            elif cmd.Name in CmdMoveRapid:
+                if len(edges) > 0:
+                    wires.append(Part.Wire(edges))
+                    edges = []
+                    points = []
+                startPoint = commandEndPoint(cmd, startPoint)
+        if edges:
+            wires.append(Part.Wire(edges))
+    return wires
+
+
+def __wiresForPath(path, startPoint=Vector(0, 0, 0)):
+    """wiresForPath(path, [startPoint=Vector(0,0,0)])
+    Returns a collection of wires, each representing a continuous cutting Path in path."""
+    wires = [Part.Wire()]
+    if hasattr(path, "Commands"):
+        for cmd in path.Commands:
+            if cmd.Name in CmdMove:
+                wires[-1].add(edgeForCmd(cmd, startPoint))
+                startPoint = commandEndPoint(cmd, startPoint)
+                # if wires[-1].isClosed():
+                #     wires.append(Part.Wire())
+            elif cmd.Name in CmdMoveRapid:
+                if wires[-1].Edges:
+                    wires.append(Part.Wire())
+                startPoint = commandEndPoint(cmd, startPoint)
+    if not wires[-1].Edges:
+        del wires[-1]
     return wires
 
 
@@ -713,14 +781,18 @@ def combineConnectedShapes(shapes):
         combined = []
         Path.Log.debug("shapes: {}".format(shapes))
         for shape in shapes:
-            connected = [f for f in combined if isRoughly(shape.distToShape(f)[0], 0.0)]
-            Path.Log.debug(
-                "  {}: connected: {} dist: {}".format(
-                    len(combined),
-                    connected,
-                    [shape.distToShape(f)[0] for f in combined],
-                )
-            )
+            connected = [
+                f
+                for f in combined
+                if shape.BoundBox.intersect(f.BoundBox) and isRoughly(shape.distToShape(f)[0], 0.0)
+            ]
+            # Path.Log.debug(
+            #     "  {}: connected: {} dist: {}".format(
+            #         len(combined),
+            #         connected,
+            #         [shape.distToShape(f)[0] for f in combined],
+            #     )
+            # )
             if connected:
                 combined = [f for f in combined if f not in connected]
                 connected.append(shape)
@@ -730,6 +802,21 @@ def combineConnectedShapes(shapes):
                 combined.append(shape)
         shapes = combined
     return shapes
+
+
+def uncompound(shape):
+    """uncompound(shape)
+    Go through the compound and return list of shapes
+    Can be useful to process shape Compound1(shape1, Compound2(shape2, Compound3(...)))"""
+    if not isinstance(shape, Part.Compound):
+        return [shape]
+    result = []
+    for sh in shape.SubShapes:
+        if isinstance(sh, Part.Compound):
+            result.extend(uncompound(sh))
+        else:
+            result.append(sh)
+    return result
 
 
 def removeDuplicateEdges(wire):
@@ -860,10 +947,10 @@ def combineHorizontalFaces(faces, keepOrder=False):
 
     If keepOrder is True, returns shapes with original order
     """
-    horizontal = list()
+    horizontal = []
     offset = 10.0
     topFace = None
-    innerFaces = list()
+    innerFaces = []
 
     # Verify all incoming faces are at Z=0.0
     for f in faces:
@@ -883,7 +970,7 @@ def combineHorizontalFaces(faces, keepOrder=False):
     afbb = allFaces.BoundBox
     bboxFace = makeBoundBoxFace(afbb, offset, -5.0)
     bboxSolid = bboxFace.extrude(FreeCAD.Vector(0.0, 0.0, 10.0))
-    extrudedFaces = list()
+    extrudedFaces = []
     for f in faces:
         extrudedFaces.append(f.extrude(FreeCAD.Vector(0.0, 0.0, 6.0)))
 
@@ -930,8 +1017,7 @@ def combineHorizontalFaces(faces, keepOrder=False):
             innerComp = Part.makeCompound(inner)
             outerComp = Part.makeCompound(outer)
             cut = outerComp.cut(innerComp)
-            for f in cut.Faces:
-                horizontal.append(f)
+            horizontal = cut.Faces
         else:
             horizontal = outer
 
@@ -940,7 +1026,9 @@ def combineHorizontalFaces(faces, keepOrder=False):
         ordered = [None] * len(faces)
         for face in horizontal:
             for i, f in enumerate(faces):
-                if face.isInside(f.Vertexes[0].Point, Tolerance, False):
+                if face.BoundBox.intersect(f.BoundBox) and face.isInside(
+                    f.Vertexes[0].Point, Tolerance, False
+                ):
                     ordered[i] = face
                     break
         ordered = [x for x in ordered if x]
@@ -950,3 +1038,67 @@ def combineHorizontalFaces(faces, keepOrder=False):
             Path.Log.info(translate("PathGeom", "Can not restore order of faces."))
 
     return horizontal
+
+
+def fuseHorizontalFaces(faces, z=0):
+    """fuseHorizontalFaces(faces) ... fuse faces and remove splitters
+    Faces translated to specified height"""
+    for f in faces:
+        f.translate(FreeCAD.Vector(0, 0, z - f.BoundBox.ZMin))
+
+    if len(faces) < 2:
+        return faces
+
+    fusedFaces = []
+    compounds = combineConnectedShapes(faces)
+    for comp in compounds:
+        if len(comp.Faces) > 1:
+            fuse = comp.Faces[0].fuse(comp.Faces[1:])
+            fusedFaces.extend(fuse.removeSplitter().Faces)
+        else:
+            fusedFaces.extend(comp.Faces)
+
+    return fusedFaces
+
+
+def filterStraightArcs(cmds, deflection=None):
+    """Replace G2/G3 commands with curvature less than 'deflection' by G1 moves."""
+    if not deflection:
+        prefGrp = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/CAM")
+        deflection = prefGrp.GetFloat("LibAreaCurveAccuracy", 0.01)
+
+    machine = MachineState()
+
+    for i in range(len(cmds)):
+        if cmds[i].Name in CmdMoveArc:
+            p3 = None
+            position = machine.getPosition()
+            try:
+                edge = edgeForCmd(cmds[i], position)
+            except Exception:
+                # error can be related with precision, so use G1
+                edge = None
+                p3 = position
+                p3.x = cmds[i].x if cmds[i].x is not None else p3.x
+                p3.y = cmds[i].y if cmds[i].y is not None else p3.y
+                p3.z = cmds[i].z if cmds[i].z is not None else p3.z
+
+            if edge and not edge.isClosed():
+                firstParameter, lastParameter = edge.FirstParameter, edge.LastParameter
+                p1 = edge.valueAt(firstParameter)
+                p2 = edge.valueAt((firstParameter + lastParameter) / 2)
+                p3 = edge.valueAt(lastParameter)
+                d = p2.distanceToPoint(p1 + (p3 - p1) / 2)
+                if d > deflection:
+                    p3 = None
+
+            if p3:
+                print(round(d, 5), " ", cmds[i])
+                params = {"X": p3.x, "Y": p3.y, "Z": p3.z}
+                if cmds[i].F:
+                    params.update({"F": cmds[i].F})
+                cmds[i] = Path.Command("G1", params)
+
+        machine.addCommand(cmds[i])
+
+    return cmds
