@@ -626,23 +626,6 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
         tooldiameter = obj.ToolController.Tool.Diameter.Value
         toolradius = tooldiameter / 2
 
-        if obj.StartDepth < obj.FinalDepth or isRoughly(obj.StartDepth.Value, obj.FinalDepth.Value):
-            obj.Path = Path.Path()
-            Path.Log.warning("StartDepth should be greater than FinalDepth")
-            return
-
-        if obj.StepDown < 0 or isRoughly(obj.StepDown.Value, 0):
-            obj.Path = Path.Path()
-            Path.Log.warning("StepDown should be greater than 0")
-            return
-
-        if safeHeight > clearanceHeight:
-            Path.Log.warning(
-                f"SafeHeight ({safeHeight}) is above ClearanceHeight ({clearanceHeight}). "
-                f"Using ClearanceHeight instead."
-            )
-            safeHeight = clearanceHeight
-
         singleHelix = obj.SingleHelix or obj.SpiralMill
 
         # Prepare linking parameters
@@ -916,10 +899,22 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
 
                 centerTop.z = centerBottom.z  # top point for next iteration
 
-        PathFeedRate.setFeedRate(self.commandlist, obj.ToolController)
+        if hasattr(obj, "HorizFeed") and hasattr(obj, "VertFeed"):
+            PathFeedRate.setFeedRate(
+                self.commandlist, obj.ToolController, obj.HorizFeed, obj.VertFeed
+            )
+        else:
+            PathFeedRate.setFeedRate(self.commandlist, obj.ToolController)
 
-        horizFeed = obj.ToolController.HorizFeed.Value
-        vertFeed = obj.ToolController.VertFeed.Value
+        if hasattr(obj, "HorizFeed") and obj.HorizFeed.Value:
+            horizFeed = obj.HorizFeed.Value
+        else:
+            horizFeed = obj.ToolController.HorizFeed.Value
+
+        if hasattr(obj, "VertFeed") and obj.VertFeed.Value:
+            vertFeed = obj.VertFeed.Value
+        else:
+            vertFeed = obj.ToolController.VertFeed.Value
 
         if obj.OverrideArcFeedRate and horizFeed and vertFeed:
             self.overrideArcFeed(self.commandlist, tooldiameter, horizFeed, vertFeed, obj.Side)

@@ -410,8 +410,7 @@ def getOffsetArea(
     fcShape,
     offset,
     removeHoles=False,
-    # Default: XY plane
-    plane=Part.makeCircle(10),
+    plane=None,
     tolerance=1e-4,
 ):
     """Make an offset area of a shape, projected onto a plane.
@@ -420,6 +419,9 @@ def getOffsetArea(
     based on notes by @sliptonic at this webpage:
     https://github.com/sliptonic/FreeCAD/wiki/PathArea-notes."""
     Path.Log.debug("getOffsetArea()")
+
+    if plane is None:  # default plane XY
+        Part.makeCircle(10)
 
     areaParams = {}
     areaParams["Offset"] = offset
@@ -444,6 +446,41 @@ def getOffsetArea(
     if not offsetShape.Faces:
         return False
     return offsetShape
+
+
+def getExtendedFaces(faces, offset, solids, cut_original=False, tol=0.01):
+    """getExtended(faces, offset, solids)
+    Get offset from face(s) and cut solids from it
+    Cut solids also from original face(s) if cut_original is True
+    Return list of original face(s) and extensions
+    """
+    extensions = []
+    if isinstance(faces, Part.Face):
+        faces = [faces]
+    for face in faces:
+        if cut_original:
+            cface = face.copy()
+            translate_dist = face.BoundBox.ZLength + Path.Geom.Tolerance
+            cface.translate(FreeCAD.Vector(0, 0, translate_dist))
+            cface = cface.cut(solids)
+            cface.translate(FreeCAD.Vector(0, 0, -translate_dist))
+            extensions.extend(cface.Faces)
+        else:
+            extensions.extend(face.Faces)
+        if not offset:
+            continue
+        plane = makeWorkplane(face)
+        oface = getOffsetArea(face, offset, plane=plane, tolerance=tol)
+        if not oface:
+            Path.Log.warning("Extension error: getOffsetArea() failed")
+            continue
+        ext = oface.cut(solids)
+        if ext.isNull() or not ext.Faces:
+            Path.Log.warning("Extension error: cut() failed")
+            continue
+        extensions.extend(ext.Faces)  # ext can be a Face or Shell
+
+    return extensions
 
 
 def reverseEdge(e):
@@ -589,6 +626,31 @@ def addToJob(obj, jobname=None):
     return job
 
 
+def getOperations(obj, addGroups=False):
+    """getOperations() ... returns all operations from job or group, includes sub groups"""
+
+    def getOpsFromGroup(group):
+        operations = []
+        for candidate in group.Group:
+            if hasattr(candidate, "Path"):
+                operations.append(candidate)
+            elif hasattr(candidate, "Group"):
+                if addGroups:
+                    operations.append(candidate)
+                operations.extend(getOpsFromGroup(candidate))
+        return operations
+
+    if getattr(obj, "Proxy", None) and obj.Proxy.__module__ == "Path.Main.Job":
+        group = getattr(obj, "Operations", None)
+    elif hasattr(obj, "Group"):
+        group = obj
+    elif getattr(obj, "__module__", None) == "CAMTests.PostTestMocks":
+        return obj.Operations.Group  # needed for tests with mocks objects
+    else:
+        group = None
+    return getOpsFromGroup(group) if group else []
+
+
 def sort_locations(locations, keys, attractors=None):
     """sort holes by the nearest neighbor method
     keys: two-element list of keys for X and Y coordinates. for example ['x','y']
@@ -687,13 +749,12 @@ def guessDepths(objshape, subs=None):
         fbb = subobj.BoundBox  # feature boundbox
         start = fbb.ZMax
 
-        if fbb.ZMax == fbb.ZMin and fbb.ZMax == bb.ZMax:  # top face
-            final = fbb.ZMin
-        elif fbb.ZMax > fbb.ZMin and fbb.ZMax == bb.ZMax:  # vertical face, full cut
-            final = fbb.ZMin
-        elif fbb.ZMax > fbb.ZMin and fbb.ZMin > bb.ZMin:  # internal vertical wall
-            final = fbb.ZMin
-        elif fbb.ZMax == fbb.ZMin and fbb.ZMax > bb.ZMin:  # face/shelf
+        if (
+            (fbb.ZMax == fbb.ZMin and fbb.ZMax == bb.ZMax)  # top face
+            or (fbb.ZMax > fbb.ZMin and fbb.ZMax == bb.ZMax)  # vertical face, full cut
+            or (fbb.ZMax > fbb.ZMin and fbb.ZMin > bb.ZMin)  # internal vertical wall
+            or (fbb.ZMax == fbb.ZMin and fbb.ZMax > bb.ZMin)  # face/shelf
+        ):
             final = fbb.ZMin
 
     return depth_params(clearance, safe, start, 1.0, 0.0, final, user_depths=None, equalstep=False)

@@ -45,6 +45,7 @@ FeaturePocket = 0x01
 FeatureFacing = 0x02
 FeatureOutline = 0x04
 FeatureRestMachining = 0x08
+FeatureExtension = 0x10
 
 
 class TaskPanelOpPage(PathOpGui.TaskPanelPage):
@@ -52,6 +53,7 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
     FeaturePocket  ... used for pocketing operation
     FeatureFacing  ... used for face milling operation
     FeatureOutline ... used for pocket-shape operation
+    FeatureExtension ... used for pocket-shape operation
     """
 
     def pocketFeatures(self):
@@ -59,12 +61,15 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
           FeaturePocket  ... used for pocketing operation
           FeatureFacing  ... used for face milling operation
           FeatureOutline ... used for pocket-shape operation
+          FeatureExtension ... used for pocket-shape operation
         Must be overwritten by subclasses"""
         pass
 
     def initPage(self, obj):
         self.extraOffsetSpinBox = QuantitySpinBox(self.form.extraOffset, obj, "ExtraOffset")
         self.thresholdSpinBox = QuantitySpinBox(self.form.threshold, obj, "RetractThreshold")
+        if FeatureExtension & self.pocketFeatures():
+            self.extensionSpinBox = QuantitySpinBox(self.form.extension, obj, "ExtensionOffset")
 
     def getForm(self):
         """getForm() ... returns UI, adapted to the results from pocketFeatures()"""
@@ -88,11 +93,17 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         if not (FeatureRestMachining & self.pocketFeatures()):
             form.useRestMachining.hide()
 
+        if not (FeatureExtension & self.pocketFeatures()):
+            form.extension.hide()
+            form.extension_label.hide()
+
         return form
 
     def updateQuantitySpinBoxes(self, index=None):
         self.extraOffsetSpinBox.updateWidget()
         self.thresholdSpinBox.updateWidget()
+        if FeatureExtension & self.pocketFeatures():
+            self.extensionSpinBox.updateWidget()
 
     def updateAngle(self, obj, setModel=True):
         if obj.ClearingPattern == "Offset":
@@ -135,6 +146,9 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
             if obj.ClearEdges != self.form.clearEdges.isChecked():
                 obj.ClearEdges = self.form.clearEdges.isChecked()
 
+        if FeatureExtension & self.pocketFeatures():
+            self.extensionSpinBox.updateProperty()
+
     def setFields(self, obj):
         """setFields(obj) ... transfers obj's property values to UI"""
         self.updateQuantitySpinBoxes()
@@ -171,6 +185,9 @@ class TaskPanelOpPage(PathOpGui.TaskPanelPage):
         if FeatureFacing & self.pocketFeatures():
             signals.append(self.form.boundaryShape.currentIndexChanged)
             signals.append(self.form.clearEdges.clicked)
+
+        if FeatureExtension & self.pocketFeatures():
+            signals.append(self.form.extension.editingFinished)
 
         return signals
 

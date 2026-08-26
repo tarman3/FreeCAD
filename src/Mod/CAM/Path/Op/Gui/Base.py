@@ -204,7 +204,10 @@ class ViewProvider:
     def setEdit(self, vobj=None, mode=0):
         """setEdit(vobj, mode=0) ... initiate editing of receivers model."""
         Path.Log.track()
-        if 0 == mode:
+        if mode == 1:
+            FreeCADGui.runCommand("Std_TransformManip")
+            return True
+        elif mode == 0:
             if vobj is None:
                 vobj = self.vobj
             # Mark as selected and update workplane visualization
@@ -242,12 +245,12 @@ class ViewProvider:
         if job:
             job.ViewObject.Proxy.resetEditVisibility(job)
 
-    def unsetEdit(self, arg1, arg2):
+    def unsetEdit(self, vobj, mode):
         # Mark as not selected and hide workplane visualization
         self._selected = False
         self.updateWorkplaneVisualization()
 
-        if self.panel:
+        if mode == 0 and self.panel:
             self.panel.reject(False)
 
     def dumps(self):
@@ -347,7 +350,7 @@ class ViewProvider:
 
                     job = PathUtils.findParentJob(self.operation)
                     workplane = PathWorkplane.createWorkplane(
-                        job, picked, sub, label="%s.%s" % (picked.Label, sub)
+                        job, picked, sub, label="f{picked.Label.{sub}"
                     )
                     self.operation.Workplane = workplane
                     FreeCAD.ActiveDocument.recompute()
@@ -357,7 +360,7 @@ class ViewProvider:
                         + "\n"
                     )
                 except Exception as e:
-                    FreeCAD.Console.PrintError("Error setting work plane: %s\n" % e)
+                    FreeCAD.Console.PrintError(f"Error setting work plane: {e}\n")
                 finally:
                     self.active = False
                     FreeCADGui.Selection.removeObserver(self)
@@ -649,7 +652,7 @@ class TaskPanelPage:
         tcCount = 0
         selfBase = PathDressupUtils.baseOp(self.obj)
         for job in PathUtils.GetJobs():
-            for op in job.Operations.Group:
+            for op in PathUtils.getOperations(job):
                 opBase = PathDressupUtils.baseOp(op)
                 if opBase == selfBase:
                     continue
@@ -783,7 +786,7 @@ class TaskPanelBaseGeometryPage(TaskPanelPage):
         Helper method to modify the current form immediately after
         it is loaded."""
         # Determine if Job operations are available with Base Geometry
-        ops = self.job.Operations.Group
+        ops = PathUtils.getOperations(self.job)
         availableOps = []
         for op in ops:
             if hasattr(op, "Base") and isinstance(op.Base, list) and op.Base:
@@ -1264,6 +1267,8 @@ class TaskPanelHeightsPage(TaskPanelPage):
             mode = self.form.CollisionAvoidanceStrategy.currentData()
             if mode and obj.CollisionAvoidanceStrategy != mode:
                 obj.CollisionAvoidanceStrategy = mode
+            if obj.FlexyHeight != self.form.chkFlexyHeight:
+                obj.FlexyHeight = self.form.chkFlexyHeight.isChecked()
 
     def setFields(self, obj):
         self.safeHeight.updateWidget()
@@ -1283,6 +1288,8 @@ class TaskPanelHeightsPage(TaskPanelPage):
                 self.form.CollisionAvoidanceStrategy.blockSignals(True)
                 self.form.CollisionAvoidanceStrategy.setCurrentIndex(index)
                 self.form.CollisionAvoidanceStrategy.blockSignals(False)
+            self.form.chkFlexyHeight.setChecked(obj.FlexyHeight)
+
         if hasattr(obj, "Workplane") and getattr(self, "hasWorkplaneSelector", False):
             self.populateWorkplanes(obj)
             linked = obj.Workplane
@@ -1293,6 +1300,7 @@ class TaskPanelHeightsPage(TaskPanelPage):
                 self.form.workplane.blockSignals(False)
 
         self.updateSelection(obj, FreeCADGui.Selection.getSelectionEx())
+        self.updateVisibility()
 
     def getSignalsForUpdate(self, obj):
         signals = []
@@ -1309,6 +1317,7 @@ class TaskPanelHeightsPage(TaskPanelPage):
         if PathOp.FeatureLinking & self.features:
             signals.append(self.form.CollisionClearance.editingFinished)
             signals.append(self.form.CollisionAvoidanceStrategy.currentIndexChanged)
+            signals.append(self.form.chkFlexyHeight.checkStateChanged)
         signals.append(self.form.workplane.currentIndexChanged)
         return signals
 
@@ -1336,6 +1345,7 @@ class TaskPanelHeightsPage(TaskPanelPage):
                 lambda: self.depthSet(obj, self.finalDepth, "FinalDepth")
             )
         self.form.resetDefaults.clicked.connect(lambda: self.resetDefaults(obj))
+        self.form.CollisionAvoidanceStrategy.currentIndexChanged.connect(self.updateVisibility)
 
     def resetDefaults(self, obj):
         """Re-derive every height and depth for the operation's current work
@@ -1372,6 +1382,11 @@ class TaskPanelHeightsPage(TaskPanelPage):
         enabled = self.selectionZLevel(obj, sel) is not None
         self.form.startDepthSet.setEnabled(enabled)
         self.form.finalDepthSet.setEnabled(enabled)
+
+    def updateVisibility(self):
+        if PathOp.FeatureLinking & self.features:
+            enabled = self.form.CollisionAvoidanceStrategy.currentIndex() > 1
+            self.form.chkFlexyHeight.setEnabled(enabled)
 
 
 class TaskPanelToolControllerPage(TaskPanelPage):
@@ -1608,7 +1623,16 @@ class TaskPanel:
             except Exception as ee:
                 Path.Log.debug("{}\n".format(ee))
             FreeCAD.ActiveDocument.commitTransaction()
-        self.cleanup(resetEdit)
+            # Object was removed; nothing meaningful to recompute, and the
+            # owning document still needs a refresh to drop view artifacts.
+            self.cleanup(resetEdit, recompute=True)
+        else:
+            # Edit-mode cancel: abortTransaction has already rolled back any
+            # property writes the user made, so re-running opExecute would
+            # just regenerate an unchanged toolpath.  Skip the recompute so
+            # long-running ops (Surface3D, Adaptive, etc.) don't pay for a
+            # cancel.
+            self.cleanup(resetEdit, recompute=False)
         return True
 
     def preCleanup(self):
@@ -1619,13 +1643,14 @@ class TaskPanel:
         self.obj.ViewObject.Proxy.clearTaskPanel()
         self.obj.ViewObject.Visibility = self.visibility
 
-    def cleanup(self, resetEdit):
+    def cleanup(self, resetEdit, recompute=True):
         """cleanup() ... implements common cleanup tasks."""
         self.panelCleanup()
         FreeCADGui.Control.closeDialog()
         if resetEdit:
             FreeCADGui.ActiveDocument.resetEdit()
-        FreeCAD.ActiveDocument.recompute()
+        if recompute:
+            FreeCAD.ActiveDocument.recompute()
 
     def pageDirtyChanged(self, page):
         """pageDirtyChanged(page) ... internal callback"""
