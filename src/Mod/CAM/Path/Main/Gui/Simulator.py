@@ -485,7 +485,7 @@ class PathSimulation:
         self.job = j
         form.listOperations.clear()
         self.operations = []
-        for op in j.Operations.OutList:
+        for op in PathUtils.getOperations(j):
             if PathUtil.opProperty(op, "Active"):
                 listItem = QtGui.QListWidgetItem(op.ViewObject.Icon, op.Label)
                 listItem.setFlags(listItem.flags() | QtCore.Qt.ItemIsUserCheckable)
