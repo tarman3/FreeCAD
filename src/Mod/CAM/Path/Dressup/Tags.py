@@ -26,7 +26,7 @@ import FreeCAD
 import Path
 import Path.Op.Util as PathOpUtil
 import Path.Dressup.Utils as PathDressup
-import PathScripts.PathUtils as PathUtils
+from PathScripts import PathUtils
 import copy
 import math
 
@@ -118,7 +118,7 @@ class Tag:
             return None
         vertexes = edge.common(solid, 0.01).Vertexes
         if vertexes:
-            pt = sorted(vertexes, key=lambda v: (v.Point - refPt).Length)[0].Point
+            pt = min(vertexes, key=lambda v: (v.Point - refPt).Length).Point
             return pt
         return None
 
@@ -209,7 +209,7 @@ class MapWireToTag:
         # if there are no edges connected to entry/exit,
         # we need to add in the missing segment and collect the new entry/exit edges.
         if not self.entryEdges:
-            self.realEntry = sorted(self.edgePoints, key=lambda p: (p - self.entry).Length)[0]
+            self.realEntry = min(self.edgePoints, key=lambda p: (p - self.entry).Length)
             self.entryEdges = [e for e in edges if Path.Geom.edgeConnectsTo(e, self.realEntry, TOL)]
             edges.append(Part.makeLine(self.entry, self.realEntry))
             # print("    <<< added extra entry line")
@@ -217,7 +217,7 @@ class MapWireToTag:
             self.realEntry = None
 
         if not self.exitEdges:
-            self.realExit = sorted(self.edgePoints, key=lambda p: (p - self.exit).Length)[0]
+            self.realExit = min(self.edgePoints, key=lambda p: (p - self.exit).Length)
             self.exitEdges = [e for e in edges if Path.Geom.edgeConnectsTo(e, self.realExit, TOL)]
             edges.append(Part.makeLine(self.realExit, self.exit))
             # print("    >>> added extra exit line")
@@ -362,7 +362,7 @@ class _RapidEdges:
         # e.g., 0.001 -> 3 decimal places
         try:
             tol = Path.Geom.Tolerance
-            self.precision = max(0, int(math.ceil(-math.log10(tol))))
+            self.precision = max(0, math.ceil(-math.log10(tol)))
         except (AttributeError, ValueError, OverflowError):
             self.precision = 6  # Reasonable default
 
@@ -403,7 +403,7 @@ class PathData:
     def __init__(self, obj):
         self.obj = obj
         path = PathUtils.getPathWithPlacement(obj.Base)
-        self.wire, rapid, rapid_indexes = Path.Geom.wireForPath(path)
+        self.wire, rapid, _ = Path.Geom.wireForPath(path)
         self.rapid = _RapidEdges(rapid)
         if self.wire:
             self.edges = self.wire.Edges
@@ -435,15 +435,13 @@ class PathData:
             if self.rapid.isRapid(e):
                 continue
             for v in e.Vertexes:
-                if v.Point.z < minZ:
-                    minZ = v.Point.z
-                if v.Point.z > maxZ:
-                    maxZ = v.Point.z
-        return (minZ, maxZ)
+                minZ = min(v.Point.z, minZ)
+                maxZ = max(v.Point.z, maxZ)
+        return minZ, maxZ
 
     def shortestAndLongestPathEdge(self, wire):
         edges = sorted(wire.Edges, key=lambda e: e.Length)
-        return (edges[0], edges[-1])
+        return edges[0], edges[-1]
 
     def generateTags(
         self, obj, minCount=2, maxCount=4, width=None, height=None, angle=None, radius=None
@@ -453,14 +451,16 @@ class PathData:
         maxLength = max(w.Length for w in self.baseWires)
         for wire in self.baseWires:
             optimalCount = Path.Geom.ceil(wire.Length / maxLength * maxCount)
-            numberTags = max(minCount, optimalCount)
+            numberTags = int(max(minCount, optimalCount))
 
             # copy edge list into python array for (much) faster random access
             Edges = list(wire.Edges)
 
             tagDistance = wire.Length / numberTags
+            print("numberTags", numberTags, "  tagDistance", round(tagDistance, 2))
 
             W = width if width else self.defaultTagWidth()
+            print("W", W)
             H = height if height else self.defaultTagHeight()
             A = angle if angle else self.defaultTagAngle()
             R = radius if radius else self.defaultTagRadius()
@@ -473,37 +473,44 @@ class PathData:
                 if Path.Geom.isRoughly(edge.Length, longestEdge.Length):
                     startIndex = i
                     break
+            print("startIndex", startIndex)
 
             startEdge = Edges[startIndex]
+            print("startEdge.Length", round(startEdge.Length, 2))
             startCount = int(startEdge.Length / tagDistance)
-            if (longestEdge.Length - shortestEdge.Length) > shortestEdge.Length:
-                startCount = int(startEdge.Length / tagDistance) + 1
+            if longestEdge.Length > 2 * shortestEdge.Length:
+                startCount += 1
 
             lastTagLength = (startEdge.Length + (startCount - 1) * tagDistance) / 2
+            # lastTagLength = (startCount - 0.5) * startEdge.Length / startCount
             currentLength = startEdge.Length
+            print("  currentLength", currentLength, "  lastTagLength", lastTagLength)
 
             minLength = min(2.0 * W, longestEdge.Length)
+            print("minLength", minLength)
 
-            edgeDict = {startIndex: startCount}
+            self.useLongEdges = len([e for e in Edges if e.Length >= minLength]) >= numberTags
+            print("useLongEdges", self.useLongEdges)
 
-            for i in range(startIndex + 1, len(Edges)):
+            edgeDict = {}
+            if startCount:
+                edgeDict = {startIndex: startCount}
+
+            print("indexes", list(range(startIndex + 1, len(Edges))) + list(range(startIndex)))
+            for i in list(range(startIndex + 1, len(Edges))) + list(range(startIndex)):
                 edge = Edges[i]
                 currentLength, lastTagLength = self.processEdge(
                     i, edge, currentLength, lastTagLength, tagDistance, minLength, edgeDict
                 )
-            for i in range(0, startIndex):
-                edge = Edges[i]
-                currentLength, lastTagLength = self.processEdge(
-                    i, edge, currentLength, lastTagLength, tagDistance, minLength, edgeDict
-                )
+                print(" ", i, "  currentLength", currentLength, "  lastTagLength", lastTagLength)
 
+            print("edgeDict", edgeDict)
             for i, counter in edgeDict.items():
                 edge = Edges[i]
-                if counter:
-                    distance = (edge.LastParameter - edge.FirstParameter) / counter
-                    for j in range(0, counter):
-                        tag = edge.Curve.value((j + 0.5) * distance)
-                        tags.append(Tag(j, tag.x, tag.y, W, H, A, R, True))
+                distance = (edge.LastParameter - edge.FirstParameter) / counter
+                for j in range(counter):
+                    tag = edge.Curve.value((j + 0.5) * distance)
+                    tags.append(Tag(j, tag.x, tag.y, W, H, A, R, True))
 
         return tags
 
@@ -520,7 +527,7 @@ class PathData:
                 continue
             p = Part.Vertex(FreeCAD.Vector(pos.x, pos.y, self.minZ))
             dists = [w.distToShape(p) for w in self.baseWires]
-            dist = sorted(dists, key=lambda d: d[0])[0]
+            dist = min(dists, key=lambda d: d[0])
             at = dist[1][0][0]
             tags.append(Tag(j, at.x, at.y, W, H, A, R, True))
             j += 1
@@ -537,16 +544,14 @@ class PathData:
         minLength,
         edgeDict,
     ):
-        tagCount = 0
         currentLength += edge.Length
-        if edge.Length >= minLength:
+        if edge.Length >= minLength or not self.useLongEdges:
             steps = max(0, Path.Geom.ceil((currentLength - lastTagLength) / tagDistance) - 1)
-            tagCount += steps
             lastTagLength += steps * tagDistance
-            if tagCount > 0:
-                edgeDict[index] = tagCount
+            if steps:
+                edgeDict[index] = steps
 
-        return (currentLength, lastTagLength)
+        return currentLength, lastTagLength
 
     def defaultTagHeight(self):
         op = PathDressup.baseOp(self.obj.Base)
@@ -563,7 +568,7 @@ class PathData:
         maxWidth = 0
         for wire in self.baseWires:
             width = self.shortestAndLongestPathEdge(wire)[1].Length / 10
-            maxWidth = width if width > maxWidth else maxWidth
+            maxWidth = max(width, maxWidth)
         return HoldingTagPreferences.defaultWidth(maxWidth)
 
     def defaultTagAngle(self):
@@ -579,17 +584,13 @@ class PathData:
             return True
         else:
             logger.info(
-                "Tag #{} ({:.2f}, {:.2f}, {:.2f}) not on base wire - disabling\n",
-                tag.nr,
-                tag.x,
-                tag.y,
-                self.minZ,
+                f"Tag #{tag.nr} ({tag.x:.2f}, {tag.y:.2f}, {self.minZ:.2f}) not on base wire - disabling"
             )
             return False
 
     def pointIsOnPath(self, p):
         v = Part.Vertex(self.pointAtBottom(p))
-        logger.debug("pt = (%f, %f, %f)" % (v.X, v.Y, v.Z))
+        logger.debug(f"pt = ({v.X}, {v.Y}, {v.Z})")
         for sortedEdges in self.bottomEdges:
             for e in sortedEdges:
                 if Path.Geom.isRoughly(0.0, v.distToShape(e)[0], 0.1):
@@ -695,7 +696,6 @@ class ObjectTagDressup:
         self.pathData = None
         self.toolRadius = None
         self.mappers = []
-        return None
 
     def onChanged(self, obj, prop):
         if prop == "Path" and obj.ViewObject:
@@ -774,11 +774,8 @@ class ObjectTagDressup:
             return False
         p1 = edge.valueAt(edge.FirstParameter)
         p2 = edge.valueAt(edge.LastParameter)
-        if Path.Geom.pointsCoincide(Path.Geom.xy(p1), Path.Geom.xy(p2)):
-            # if this vertical goes up, it can't be the start of a tag intersection
-            if p1.z < p2.z:
-                return False
-        return True
+        # if this vertical goes up, it can't be the start of a tag intersection
+        return not (Path.Geom.pointsCoincide(Path.Geom.xy(p1), Path.Geom.xy(p2)) and p1.z < p2.z)
 
     def createPath(self, obj, pathData, tags):
         commands = []
@@ -899,8 +896,8 @@ class ObjectTagDressup:
                         prev.solid.BoundBox.intersect(tag.solid.BoundBox)
                         and prev.solid.common(tag.solid, 0.01).Faces
                     ):
-                        logger.info("Tag #%d intersects with previous tag - disabling\n" % i)
-                        logger.debug("this tag = %d [%s]" % (i, tag.solid.BoundBox))
+                        logger.info(f"Tag #{i} intersects with previous tag - disabling\n")
+                        logger.debug(f"this tag = {i} [{tag.solid.BoundBox}]")
                         tag.enabled = False
                 elif self.pathData.edges:
                     e = self.pathData.edges[0]
@@ -909,12 +906,12 @@ class ObjectTagDressup:
                     if tag.solid.isInside(p0, Path.Geom.Tolerance, True) or tag.solid.isInside(
                         p1, Path.Geom.Tolerance, True
                     ):
-                        logger.info("Tag #{} intersects with starting point - disabling\n", i)
+                        logger.info(f"Tag #{i} intersects with starting point - disabling\n")
                         tag.enabled = False
 
             if tag.enabled:
                 prev = tag
-                logger.debug("previousTag = {} [{}]", i, prev)
+                logger.debug(f"previousTag = {i} [{prev}]")
             else:
                 disabled.append(i)
             tag.nr = i  # assign final nr
