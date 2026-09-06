@@ -545,8 +545,9 @@ def wiresForPath(path, startPoint=Vector(0, 0, 0)):
         edges = []
         for cmd in path.Commands:
             if cmd.Name in CmdMove:
-                edges.append(edgeForCmd(cmd, startPoint))
-                startPoint = commandEndPoint(cmd, startPoint)
+                if edge := edgeForCmd(cmd, startPoint):
+                    edges.append(edge)
+                    startPoint = commandEndPoint(cmd, startPoint)
             elif cmd.Name in CmdMoveRapid:
                 if len(edges) > 0:
                     wires.append(Part.Wire(edges))
