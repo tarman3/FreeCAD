@@ -722,15 +722,11 @@ class PathData:
         maxLength = max(w.Length for w in self.baseWires)
         for wire in self.baseWires:
             optimalCount = Path.Geom.ceil(wire.Length / maxLength * maxCount)
-            numberTags = max(minCount, optimalCount)
+            numberTags = int(max(minCount, optimalCount))
+            tagDistance = wire.Length / numberTags
 
             # copy edge list into python array for (much) faster random access
             Edges = list(wire.Edges)
-
-            # for e in Edges:
-            #    debugMarker(e.Vertexes[0].Point, 'base', (0.0, 1.0, 1.0), 0.2)
-
-            tagDistance = wire.Length / numberTags
 
             W = width if width else self.defaultTagWidth()
             H = height if height else self.defaultTagHeight()
@@ -739,77 +735,40 @@ class PathData:
 
             # start assigning tags on the longest segment
             shortestEdge, longestEdge = self.shortestAndLongestPathEdge(wire)
+            minLength = min(2.0 * W, longestEdge.Length)
+            self.useLongEdges = len([e for e in Edges if e.Length >= minLength]) >= numberTags
+
             startIndex = 0
             for i in range(len(Edges)):
                 edge = Edges[i]
-                logger.debug("  %d: %.2f" % (i, edge.Length))
                 if Path.Geom.isRoughly(edge.Length, longestEdge.Length):
                     startIndex = i
                     break
 
             startEdge = Edges[startIndex]
             startCount = int(startEdge.Length / tagDistance)
-            if (longestEdge.Length - shortestEdge.Length) > shortestEdge.Length:
-                startCount = int(startEdge.Length / tagDistance) + 1
+            if longestEdge.Length > 2 * shortestEdge.Length:
+                startCount += 1
 
-            lastTagLength = (startEdge.Length + (startCount - 1) * tagDistance) / 2
+            edgeDict = {}
+            lastTagLength = 0
+            if startCount:
+                lastTagLength = (startCount - 0.5) * startEdge.Length / startCount
+                edgeDict = {startIndex: startCount}
+
             currentLength = startEdge.Length
-
-            minLength = min(2.0 * W, longestEdge.Length)
-
-            logger.debug(
-                "length=%.2f shortestEdge=%.2f(%.2f) longestEdge=%.2f(%.2f) minLength=%.2f"
-                % (
-                    wire.Length,
-                    shortestEdge.Length,
-                    shortestEdge.Length / wire.Length,
-                    longestEdge.Length,
-                    longestEdge.Length / wire.Length,
-                    minLength,
-                )
-            )
-            logger.debug(
-                "   start: index=%-2d count=%d (length=%.2f, distance=%.2f)"
-                % (startIndex, startCount, startEdge.Length, tagDistance)
-            )
-            logger.debug("               -> lastTagLength=%.2f)" % lastTagLength)
-            logger.debug("               -> currentLength=%.2f)" % currentLength)
-
-            edgeDict = {startIndex: startCount}
-
-            for i in range(startIndex + 1, len(Edges)):
+            for i in list(range(startIndex + 1, len(Edges))) + list(range(startIndex)):
                 edge = Edges[i]
                 currentLength, lastTagLength = self.processEdge(
-                    i,
-                    edge,
-                    currentLength,
-                    lastTagLength,
-                    tagDistance,
-                    minLength,
-                    edgeDict,
-                )
-            for i in range(0, startIndex):
-                edge = Edges[i]
-                currentLength, lastTagLength = self.processEdge(
-                    i,
-                    edge,
-                    currentLength,
-                    lastTagLength,
-                    tagDistance,
-                    minLength,
-                    edgeDict,
+                    i, edge, currentLength, lastTagLength, tagDistance, minLength, edgeDict
                 )
 
             for i, counter in edgeDict.items():
                 edge = Edges[i]
-                logger.debug(" %d: %d" % (i, counter))
-                # debugMarker(edge.Vertexes[0].Point, 'base', (1.0, 0.0, 0.0), 0.2)
-                # debugMarker(edge.Vertexes[1].Point, 'base', (0.0, 1.0, 0.0), 0.2)
-                if counter:
-                    distance = (edge.LastParameter - edge.FirstParameter) / counter
-                    for j in range(0, counter):
-                        tag = edge.Curve.value((j + 0.5) * distance)
-                        tags.append(Tag(j, tag.x, tag.y, W, H, A, R, True))
+                distance = (edge.LastParameter - edge.FirstParameter) / counter
+                for j in range(counter):
+                    tag = edge.Curve.value((j + 0.5) * distance)
+                    tags.append(Tag(j, tag.x, tag.y, W, H, A, R, True))
 
         return tags
 
@@ -843,19 +802,14 @@ class PathData:
         minLength,
         edgeDict,
     ):
-        tagCount = 0
         currentLength += edge.Length
-        if edge.Length >= minLength:
+        if not self.useLongEdges or edge.Length >= minLength:
             steps = max(0, Path.Geom.ceil((currentLength - lastTagLength) / tagDistance) - 1)
-            tagCount += steps
             lastTagLength += steps * tagDistance
-            if tagCount > 0:
-                logger.debug("      index={} -> count={}", index, tagCount)
-                edgeDict[index] = tagCount
-        else:
-            logger.debug("      skipping={:<2d} ({:.2f})", index, edge.Length)
+            if steps:
+                edgeDict[index] = steps
 
-        return (currentLength, lastTagLength)
+        return currentLength, lastTagLength
 
     def defaultTagHeight(self):
         op = PathDressup.baseOp(self.obj.Base)
