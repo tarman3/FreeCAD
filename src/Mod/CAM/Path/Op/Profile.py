@@ -672,11 +672,13 @@ class ObjectProfile(PathAreaOp.ObjectOp):
         shapeTups = []
         goodWires = []
         passOffsets = self.areaOpAreaParams(obj, False)["Offset"]
-        ind = -1 if obj.Side == "Outside" else 0
+        index = obj.Side == "Inside"
         for po in passOffsets:
-            owires = Path.Op.Util.offsetWire(wire, None, abs(po), tolerance=self.tol)[ind]
-            while owires:
-                owire = owires.pop()
+            owires = Path.Op.Util.offsetWire(wire, self.solids, po, tolerance=self.tol)[index]
+            temp = owires[:]
+            added = False
+            while temp:
+                owire = temp.pop()
                 if not section.Edges:
                     goodWires.append(owire)
                     continue
@@ -685,6 +687,7 @@ class ObjectProfile(PathAreaOp.ObjectOp):
                 dist = distData[0]
                 if dist > self.radius or Path.Geom.isRoughly(dist, self.radius, 2 * self.tol):
                     goodWires.append(owire)
+                    added = True
                 else:
                     point = distData[1][0][1]  # nearest point on wire which intersects with tool
                     circle = Part.makeCircle(self.radius, point)
@@ -693,7 +696,12 @@ class ObjectProfile(PathAreaOp.ObjectOp):
                     eface = face.extrude(FreeCAD.Vector(0, 0, 2))
                     cut = owire.cut(eface)
                     ws = [Part.Wire(se) for se in Part.sortEdges(cut.Edges)]
-                    owires.extend(ws)
+                    temp.extend(ws)
+
+            if not added:
+                # offset wires was completelly cutted by solids
+                # add offset wires as is in this case
+                goodWires.extend(owires)
 
         if goodWires:
             shapeTups.append((goodWires[0], goodWires, "OpenEdge"))

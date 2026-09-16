@@ -282,7 +282,11 @@ def wireToCArea(wire, tolerance=0.01):
     c = area.Curve()
 
     # Approximate wire as lines and arcs
-    wire = approximateWire(wire, tolerance)
+    coincideTolerance = getCoincideTolerance(wire.Edges)
+    if coincideTolerance is None or coincideTolerance > Path.Geom.Tolerance:
+        wire = discretizeWire(wire, tolerance)
+    else:
+        wire = approximateWire(wire, tolerance)
     edges = _orientEdges(Part.__sortEdges__(wire.Edges))
 
     # Add the first point (start of first edge)
@@ -433,6 +437,11 @@ def offsetWire(wire, base, offset, tolerance=0.01):
     flipping behavior is undesirable, we'll need a new flag to disable it in the C++
     implementation. It was needed in C++ for compatibility with old behavior.)
     """
+
+    def cutLength(wires):
+        """Calculate total length of edges after cutting by solid"""
+        return sum(e.Length for e in Part.Compound(wires).cut(base).Edges)
+
     if len(wire.Edges) == 0:
         return [], []
 
@@ -458,6 +467,11 @@ def offsetWire(wire, base, offset, tolerance=0.01):
 
         for i, w in enumerate(neg_wires):
             debugWire(f"negativeOffset_{i}", w)
+
+        if base and any(not w.isClosed() for w in pos_wires + neg_wires):
+            # In case of open wires, cuts pos_wires and neg_wires by solids
+            # Assumed that remaining edges from pos_wires should be longer
+            return sorted([pos_wires, neg_wires], key=cutLength, reverse=True)
 
         # Return
         return pos_wires, neg_wires

@@ -65,7 +65,7 @@ class Instruction:
         """positionEnd() ... returns a Vector of the end position"""
         return FreeCAD.Vector(self.x(self.begin.x), self.y(self.begin.y), self.z(self.begin.z))
 
-    def pathLength(self):
+    def pathLength(self, xy=None):
         """pathLength() ... returns the length in mm"""
         return 0
 
@@ -152,7 +152,7 @@ class MoveStraight(Instruction):
     def isRapid(self):
         return self.cmd in Constants.GCODE_MOVE_RAPID
 
-    def pathLength(self):
+    def pathLength(self, xy=None):
         return (self.positionEnd() - self.positionBegin()).Length
 
 
@@ -209,8 +209,14 @@ class MoveArc(Instruction):
         """arcRadius() ... return the radius"""
         return (self.xyBegin() - self.xyCenter()).Length
 
-    def pathLength(self):
-        return self.arcAngle() * self.arcRadius()
+    def pathLength(self, xy=True):
+        """pathLength() ... return length of arc in XY plane
+        if xy=False, calculate true length of arc which can be a helix"""
+        h = self.positionBegin().z - self.positionEnd().z
+        if xy or Path.Geom.isRoughly(h, 0):
+            return self.arcAngle() * self.arcRadius()
+        else:
+            return math.hypot(self.arcAngle() * self.arcRadius(), h)
 
     def xyCenter(self):
         return FreeCAD.Vector(self.begin.x + self.i(), self.begin.y + self.j(), 0)
@@ -281,14 +287,18 @@ class Maneuver:
         begin = maneuver.positionBegin()
         x = y = z = None
         isPosDefined = False  # used to defer the zero-length check
+        lastF = None
         for cmd in path.Commands:
             i = cls.InstructionFromCommand(cmd, begin)
-            if (
-                i.isMove()
-                and isPosDefined  # only if full position is established
-                and Path.Geom.pointsCoincide(i.positionBegin(), i.positionEnd())
-            ):
-                continue  # skip zero length move
+
+            if i.isMove() and isPosDefined:  # checkin for zero length moves
+                if i.param.get("F") is None and lastF is not None:
+                    i.param.update({"F": lastF})  # set last F, if previous command was skipped
+                lastF = None
+                if Path.Geom.isRoughly(i.pathLength(xy=False), 0):
+                    lastF = i.param.get("F")
+                    continue  # skip zero length move
+
             instr.append(i)
             begin = i.positionEnd()
             if not isPosDefined:  # until a full position is established
