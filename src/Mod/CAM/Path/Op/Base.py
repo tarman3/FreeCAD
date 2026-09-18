@@ -75,14 +75,14 @@ class PathNoTCException(Exception):
 
 
 class BaseGeometryException(Exception):
-    """ "BaseGeometryException is raised when assigned geometry missed"""
+    """BaseGeometryException is raised when assigned geometry missed"""
 
     def __init__(self):
         super().__init__("Base geometry error!")
 
 
 class DepthsException(Exception):
-    """ "DepthsException is raised when depth parameters incorrect"""
+    """DepthsException is raised when depth parameters incorrect"""
 
     def __init__(self):
         super().__init__("Depth parameters error!")
@@ -1041,18 +1041,34 @@ class ObjectOp:
         return True
 
     def checkDepths(self, obj):
-        """checkDepths(obj) ... check if depth parameters is valid"""
+        """checkDepths(obj) ... check that depths and heights are consistent with each other"""
+        features = self.opFeatures(obj)
         isValid = True
-        if FeatureDepths & self.opFeatures(obj):
-            if Path.Geom.isStrictlyGreater(obj.FinalDepth.Value, obj.StartDepth.Value):
-                Path.Log.error(translate("CAM_Operation", "FinalDepth above StartDepth\n"))
-                isValid = False
-            if Path.Geom.isStrictlyGreater(obj.StartDepth, obj.SafeHeight):
-                Path.Log.error(translate("CAM_Operation", "StartDepth above SafeHeight\n"))
-                isValid = False
-            if Path.Geom.isStrictlyGreater(obj.SafeHeight, obj.ClearanceHeight):
-                Path.Log.error(translate("CAM_Operation", "SafeHeight above ClearanceHeight\n"))
-                isValid = False
+        if (
+            FeatureDepths & features
+            and not FeatureNoFinalDepth & features
+            and Path.Geom.isStrictlyGreater(obj.FinalDepth.Value, obj.StartDepth.Value)
+        ):
+            Path.Log.error(
+                translate("CAM_Operation", "%s: Final depth is above start depth") % obj.Label
+            )
+            isValid = False
+        if (
+            FeatureDepths & features
+            and FeatureHeights & features
+            and Path.Geom.isStrictlyGreater(obj.StartDepth.Value, obj.SafeHeight.Value)
+        ):
+            Path.Log.error(
+                translate("CAM_Operation", "%s: Start depth is above safe height") % obj.Label
+            )
+            isValid = False
+        if FeatureHeights & features and Path.Geom.isStrictlyGreater(
+            obj.SafeHeight.Value, obj.ClearanceHeight.Value
+        ):
+            Path.Log.error(
+                translate("CAM_Operation", "%s: Safe height is above clearance height") % obj.Label
+            )
+            isValid = False
         return isValid
 
     def _setup_workplane_transform(self, obj):

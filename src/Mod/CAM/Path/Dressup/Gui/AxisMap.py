@@ -101,11 +101,12 @@ class ObjectDressup:
                 for f in m.Shape.Faces
                 if isinstance(f.Surface, Part.Cylinder)
             ]
-            cylinder = max(cylinders, key=lambda c: c.Radius)
-            obj.Centre = cylinder.Center
-            obj.Radius = cylinder.Radius
-            if Path.Geom.compareVecs(cylinder.Axis, FreeCAD.Vector(0, 1, 0)):
-                obj.AxisMap = "X->B"
+            if cylinders:
+                cylinder = max(cylinders, key=lambda c: c.Radius)
+                obj.Centre = cylinder.Center
+                obj.Radius = cylinder.Radius
+                if Path.Geom.compareVecs(cylinder.Axis, FreeCAD.Vector(0, 1, 0)):
+                    obj.AxisMap = "X->B"
 
     def dumps(self):
         return

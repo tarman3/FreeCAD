@@ -107,7 +107,8 @@ class ObjectDeburr(PathEngraveBase.ObjectOp):
                     "\n\nOther tools:"
                     "\n  Control horizontal offset"
                     "\n\nBall End and Bull Nose:"
-                    "\n  Zero values of Width and ExtraDepth provides touching the shape",
+                    "\n  Zero values of Width and ExtraDepth provides touching the shape"
+                    "\n\nSet zero for horizontal face, which already have a chamfer",
                 ),
             ),
             (

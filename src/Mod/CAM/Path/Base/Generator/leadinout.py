@@ -154,7 +154,7 @@ class LeadInOut:
         startDepth=0,
         tolerance=0.1,
     ):
-        self.source = PathLanguage.Maneuver.FromPath(path).instr
+        self.source = PathLanguage.Maneuver.FromPath(path, skipZeroLength=True).instr
         self.side = side
         self.direction = direction
         self.leadIn = leadIn

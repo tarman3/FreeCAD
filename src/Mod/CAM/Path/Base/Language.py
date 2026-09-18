@@ -279,25 +279,25 @@ class Maneuver:
         return Instruction(begin, cmd.Name, cmd.Parameters)
 
     @classmethod
-    def FromPath(cls, path, begin=None):
+    def FromPath(cls, path, begin=None, skipZeroLength=False):
         """FromPath(path: Path.Path) ... returns Maneuver instance from Path.Path object
-        Commands with zero length move skipped, because these returns incorrect anglesOfTangents"""
+        If skipZeroLength=True, commands with zero length move will be skipped
+        Can be useful, if angle of tangent uses, which can not be defined for zero length moves"""
         maneuver = Maneuver(begin)
         instr = []
         begin = maneuver.positionBegin()
         x = y = z = None
         isPosDefined = False  # used to defer the zero-length check
-        lastF = None
         for cmd in path.Commands:
             i = cls.InstructionFromCommand(cmd, begin)
 
-            if i.isMove() and isPosDefined:  # checkin for zero length moves
-                if i.param.get("F") is None and lastF is not None:
-                    i.param.update({"F": lastF})  # set last F, if previous command was skipped
-                lastF = None
-                if Path.Geom.isRoughly(i.pathLength(xy=False), 0):
-                    lastF = i.param.get("F")
-                    continue  # skip zero length move
+            if (
+                skipZeroLength
+                and i.isMove()
+                and isPosDefined
+                and Path.Geom.isRoughly(i.pathLength(xy=False), 0)
+            ):
+                continue  # skip zero length move
 
             instr.append(i)
             begin = i.positionEnd()
