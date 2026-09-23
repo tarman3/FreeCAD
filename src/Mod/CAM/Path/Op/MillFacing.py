@@ -94,7 +94,7 @@ class ObjectMillFacing(PathOp.ObjectOp):
                 if n[0] in self.addNewProps:
                     setattr(obj, n[0], n[1])
             if warn:
-                newPropMsg = translate("CAM_MIllFacing", "New property added to")
+                newPropMsg = translate("CAM_MillFacing", "New property added to")
                 newPropMsg += ' "{}": {}'.format(obj.Label, self.addNewProps) + ". "
                 newPropMsg += translate("CAM_MillFacing", "Check default value(s).")
                 FreeCAD.Console.PrintWarning(newPropMsg + "\n")
@@ -117,7 +117,7 @@ class ObjectMillFacing(PathOp.ObjectOp):
             obj.ViewObject.signalChangeIcon()
 
     def opUpdateEditorModes(self, obj):
-        mode = 2 if obj.ClearingPattern in ("Circular", "Spiral") else 0
+        mode = 2 if "Spiral" in obj.ClearingPattern else 0
         obj.setEditorMode("PassExtension", mode)
 
     def opPropertyDefinitions(self):
@@ -219,8 +219,8 @@ class ObjectMillFacing(PathOp.ObjectOp):
                 (translate("CAM_MillFacing", "ZigZag"), "ZigZag"),
                 (translate("CAM_MillFacing", "Bidirectional"), "Bidirectional"),
                 (translate("CAM_MillFacing", "Directional"), "Directional"),
-                (translate("CAM_MillFacing", "Spiral"), "Spiral"),
-                (translate("CAM_MillFacing", "Circular"), "Circular"),
+                (translate("CAM_MillFacing", "Spiral Circular"), "Spiral Circular"),
+                (translate("CAM_MillFacing", "Spiral Rectangular"), "Spiral Rectangular"),
             ],
         }
 
@@ -238,19 +238,6 @@ class ObjectMillFacing(PathOp.ObjectOp):
 
         return data
 
-    def opPropertyDefaults(self, obj, job):
-        """opPropertyDefaults(obj, job) ... returns a dictionary of default values
-        for the operation's properties."""
-        defaults = {
-            "CutMode": "Climb",
-            "ClearingPattern": "ZigZag",
-            "Angle": 0,
-            "StepOver": 25,
-            "AxialStockToLeave": 0.0,
-        }
-
-        return defaults
-
     def opSetDefaultValues(self, obj, job):
         """opSetDefaultValues(obj, job) ... set default values for operation-specific properties"""
         Path.Log.track()
@@ -265,6 +252,15 @@ class ObjectMillFacing(PathOp.ObjectOp):
             3.0  # Default to 3mm, will be adjusted based on tool diameter in opExecute
         )
         obj.Reverse = False
+
+    def opOnDocumentRestored(self, obj):
+        prop = "ClearingPattern"
+        if "Spiral" in obj.getEnumerationsOfProperty(prop):
+            pattern = getattr(obj, prop)
+            pattern = "Spiral Rectangular" if pattern == "Spiral" else pattern
+            enumList = dict(self.propertyEnumerations("data"))[prop]
+            setattr(obj, prop, enumList)
+            setattr(obj, prop, pattern)
 
     def opExecute(self, obj):
         """opExecute(obj) ... process Mill Facing operation"""
@@ -344,7 +340,8 @@ class ObjectMillFacing(PathOp.ObjectOp):
         # offset with intersection joins
         offsetVal = obj.StockExtension.Value
         if offsetVal < 0:
-            offsetVal = max(offsetVal, -0.5 * min(e.Length for e in boundary_wire.Edges))
+            # offset limited to not collapse the rectangle to line with zero area
+            offsetVal = max(offsetVal, -0.5 * min(e.Length for e in boundary_wire.Edges) + 0.001)
         boundary_wire = boundary_wire.makeOffset2D(offsetVal, 2)
 
         # Determine milling direction
@@ -358,8 +355,9 @@ class ObjectMillFacing(PathOp.ObjectOp):
         retract_height = obj.SafeHeight.Value
 
         # Generate the base toolpath for one depth level based on clearing pattern
+        base_commands = []
         try:
-            if obj.ClearingPattern == "Spiral":
+            if obj.ClearingPattern == "Spiral Rectangular":
                 # Spiral has different signature - no pass_extension or retract_height
                 Path.Log.debug("Generating spiral toolpath")
                 base_commands = spiral_facing.spiral(
@@ -405,7 +403,7 @@ class ObjectMillFacing(PathOp.ObjectOp):
                     reverse=bool(getattr(obj, "Reverse", False)),
                     angle_degrees=getattr(obj.Angle, "Value", obj.Angle),
                 )
-            elif obj.ClearingPattern == "Circular":
+            elif obj.ClearingPattern == "Spiral Circular":
                 Path.Log.debug("Generating circular spiral toolpath")
                 step = stepover_percent * tool_diameter / 100
                 radius = max(e.Length for e in boundary_wire.Edges) / 2 + tool_diameter / 2 - step
@@ -419,10 +417,10 @@ class ObjectMillFacing(PathOp.ObjectOp):
                     "startAt": "Outside",
                     "dir_angle_rad": dir_angle_rad,
                 }
-
-                # create spiral
-                base_commands = spiral.generate(**args)
-                base_commands[0].Name = "G0"
+                if radius > 0:
+                    # create spiral
+                    base_commands = spiral.generate(**args)[3:]
+                    base_commands[0].Name = "G0"
             else:
                 Path.Log.error(f"Unknown clearing pattern: {obj.ClearingPattern}")
                 raise ValueError(f"Unknown clearing pattern: {obj.ClearingPattern}")
@@ -433,6 +431,17 @@ class ObjectMillFacing(PathOp.ObjectOp):
         except Exception as e:
             Path.Log.error(f"Error generating toolpath: {e}")
             raise
+
+        print("base_commands", base_commands[:5])
+        if not base_commands:
+            Path.Log.warning(
+                translate(
+                    "CAM_MillFacing",
+                    "%s: Generating empty toolpath. Take attention to extensions and tool diameter.",
+                )
+                % obj.Label
+            )
+            return
 
         # Be safe. Add first G0 to clearance height
         targetZ = obj.ClearanceHeight.Value

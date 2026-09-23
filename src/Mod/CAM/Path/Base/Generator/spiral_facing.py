@@ -28,6 +28,7 @@ including support for angled rectangles and proper tool engagement.
 
 import FreeCAD
 import Path
+import math
 
 if False:
     Path.Log.setLevel(Path.Log.Level.DEBUG, Path.Log.thisModule())
@@ -200,6 +201,8 @@ def spiral(
 
     primary_length = max_s - min_s
     step_length = max_t - min_t
+    print("primary_length", primary_length)
+    print("step_length", step_length)
 
     tool_radius = tool_diameter / 2.0
     stepover_dist = tool_diameter * (stepover_percent / 100.0)
@@ -209,50 +212,72 @@ def spiral(
     # Calculate adjusted stepover to guarantee center coverage
     starting_inset = tool_radius - stepover_dist
     limiting_half = min(primary_length, step_length) / 2.0
+    print("limiting_half", limiting_half)
     total_radial_distance = limiting_half - tool_radius - starting_inset
 
     if total_radial_distance <= 0:
         actual_stepover = stepover_dist
     else:
-        number_of_intervals = Path.Geom.ceil(total_radial_distance / stepover_dist)
+        number_of_intervals = math.ceil(total_radial_distance / stepover_dist)
         actual_stepover = total_radial_distance / number_of_intervals
+        print("number_of_intervals", number_of_intervals)
 
+    print("actual_stepover", actual_stepover)
     Path.Log.debug(
         f"Spiral: adjusted stepover {stepover_dist:.4f} → {actual_stepover:.4f} mm, intervals={number_of_intervals if total_radial_distance > 0 else 0}"
     )
 
     # Standard initial_offset (preserves first engagement exactly)
     initial_offset = -tool_radius + stepover_dist
+    print("initial_offset", initial_offset)
 
     z = polygon.BoundBox.ZMin
 
     clockwise = milling_direction == "conventional"
 
+    commands = []
+    if Path.Geom.isGreaterEqual(initial_offset, limiting_half):
+        # not enough area for spiral, create only one line instead
+        if primary_length > step_length:
+            min_s, min_t = min_t, min_s
+            max_s, max_t = max_t, max_s
+        p1 = (min_s + limiting_half, min_t + limiting_half)
+        p2 = (max_s - limiting_half, max_t - limiting_half)
+        if not clockwise:
+            p1, p2 = p2, p1
+        if reverse:
+            p1, p2 = p2, p1
+        commands.append(Path.Command("G0", {"X": p1[0], "Y": p1[1], "Z": z}))
+        commands.append(Path.Command("G1", {"X": p2[0], "Y": p2[1], "Z": z}))
+        return commands
+
     start_corner_index = 0 if clockwise else 2
     if reverse:
         start_corner_index = (start_corner_index + 2) % 4
 
-    commands = []
+    if clockwise:
+        order = [(start_corner_index + i) % 4 for i in range(4)]
+    else:
+        order = [(start_corner_index - i) % 4 for i in range(4)]
+    print("order", order)
+
     k = 0
     first_move_done = False
 
     while True:
         current_offset = initial_offset + k * actual_stepover
+        print("  current_offset", current_offset)
 
         s0 = min_s + current_offset
         s1 = max_s - current_offset
         t0 = min_t + current_offset
         t1 = max_t - current_offset
 
-        if s0 >= s1 or t0 >= t1:
+        if Path.Geom.isGreaterEqual(s0, s1) or Path.Geom.isGreaterEqual(t0, t1):
             break
 
         corners_st = [(s0, t0), (s1, t0), (s1, t1), (s0, t1)]
-
-        if clockwise:
-            order = [(start_corner_index + i) % 4 for i in range(4)]
-        else:
-            order = [(start_corner_index - i) % 4 for i in range(4)]
+        print("  corners_st", corners_st)
 
         def st_to_xy(s, t):
             return origin + primary_vec * s + step_vec * t

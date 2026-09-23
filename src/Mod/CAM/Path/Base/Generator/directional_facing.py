@@ -90,13 +90,18 @@ def directional(
 
     # Use full-length passes exactly like bidirectional (no slice_wire_segments)
     total_extension = pass_extension + tool_radius
+    print("total_extension", total_extension)
+    print("min_s", min_s, "  max_s", max_s)
     start_s = min_s - total_extension
     end_s = max_s + total_extension
+    print("start_s", start_s, "  end_s", end_s)
 
     s_mid = (min_s + max_s) / 2.0
-    if start_s > s_mid or end_s < s_mid:
+    print("s_mid", s_mid)
+    if start_s >= s_mid or end_s <= s_mid:
         step_positions = []
 
+    print("step_positions", step_positions)
     commands = []
     kept_segments = 0
 

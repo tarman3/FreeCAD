@@ -486,7 +486,7 @@ class PathData:
 
             currentLength = startEdge.Length
             for i in list(range(startIndex + 1, len(Edges))) + list(range(startIndex)):
-                if len(edgeDict) >= numberTags:
+                if sum(edgeDict.values()) >= numberTags:
                     break
                 edge = Edges[i]
                 currentLength, lastTagLength = self.processEdge(

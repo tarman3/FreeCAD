@@ -399,7 +399,7 @@ def generate_t_values(wire, step_vec, tool_diameter, stepover_percent, origin, e
     print("generate_t_values")
     """Generate step positions along step_vec with engagement offset and stepover.
 
-    end_at_center uses for bidirectinal pattern, passes starts at sides and ends near center
+    end_at_center uses for bidirectional pattern, passes starts at sides and ends near center
 
     If only one pass created, place it at center
     """
@@ -410,7 +410,7 @@ def generate_t_values(wire, step_vec, tool_diameter, stepover_percent, origin, e
     print("  min_t", min_t, "  max_t", max_t)
 
     # Start position: tool center positioned so engagement amount reaches polygon edge
-    # Tool center at: min_t - tool_radius + engagement_amount
+    # Tool center at: min_t - tool_radius + stepover
     # This positions the engaged portion at the polygon edge
 
     if stepover <= 0:
@@ -422,22 +422,21 @@ def generate_t_values(wire, step_vec, tool_diameter, stepover_percent, origin, e
         t_right = max_t + tool_radius - stepover
         t_middle = (min_t + max_t) / 2
         print("t_middle", t_middle)
-        print("t_right", t_right, "  t_left", t_left)
+        print("t_left", t_left, "t_right", t_right)
         print()
         values = [t_left, t_right]
+        print("values", values)
         while Path.Geom.isStrictlyGreater(t_right - tool_radius, t_left + tool_radius):
             t_left += stepover
             t_right -= stepover
-            print("t_right", t_right, "  t_end", t_left)
+            print("    t_left", t_left, "t_right", t_right)
             values.append(t_left)
             values.append(t_right)
-        if Path.Geom.isStrictlyGreater(
-            values[0] + tool_radius, max_t
-        ) or Path.Geom.isStrictlyGreater(
-            values[-2] + tool_radius, values[-1] - tool_radius + stepover
-        ):
+            print("  values", values)
+            print(" ???", values[-2] + tool_radius, values[-1] - tool_radius)
+        if Path.Geom.isGreaterEqual(values[-2] + tool_radius, values[-1] - tool_radius + stepover):
             print("  !!! removed", values[-1])
-            # area cleared by previous pass and last pass can be removed
+            # remove last pass, area already cleared by previous pass
             del values[-1]
         values.sort()
     else:

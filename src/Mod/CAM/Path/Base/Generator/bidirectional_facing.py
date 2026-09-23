@@ -73,7 +73,6 @@ def bidirectional(
 
     # Compute projection bounds
     min_s, max_s = facing_common.project_bounds(polygon, primary_vec, origin)
-    min_t, max_t = facing_common.project_bounds(polygon, step_vec, origin)
 
     # ------------------------------------------------------------------
     # Use the proven generate_t_values (with coverage fix) for full coverage
@@ -83,10 +82,6 @@ def bidirectional(
     )
     print("step_positions", len(step_positions), step_positions)
 
-    tool_radius = tool_diameter / 2.0
-    center = (min_t + max_t) / 2.0
-    print("center", center)
-
     commands = []
     tool_radius = tool_diameter / 2.0
     total_extension = pass_extension + tool_radius
@@ -94,7 +89,7 @@ def bidirectional(
     end_s = max_s + total_extension
 
     s_mid = (min_s + max_s) / 2
-    if start_s > s_mid or end_s < s_mid:
+    if start_s >= s_mid or end_s <= s_mid:
         step_positions = []
 
     swap = reverse
