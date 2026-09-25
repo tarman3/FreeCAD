@@ -277,6 +277,16 @@ class ObjectOp(PathOp.ObjectOp):
                     rampParams["method"] = (
                         0 if obj.RampMethod == "Helix" else int(obj.RampMethod.split()[1])
                     )
+                if rampParams["method"] and not rampParams["angle_rad"]:
+                    # Ramp methods 1-3 need an angle, plunge instead
+                    if areaIndex == 0:
+                        Path.Log.warning(
+                            translate(
+                                "PathAreaOp", "%s: ramp method '%s' needs a ramp angle, plunging"
+                            )
+                            % (obj.Label, obj.RampMethod)
+                        )
+                    rampParams["method"] = None
 
                 if (
                     obj.UseLongestEdge

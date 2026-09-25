@@ -57,7 +57,7 @@ class TaskPanelOpPage(PathPocketBaseGui.TaskPanelOpPage):
         ]
 
         enumTups = PathMillFace.ObjectFace.propertyEnumerations(dataType="raw")
-        enumTups.update(PathPocketShape.ObjectPocket.pocketPropertyEnumerations(dataType="raw"))
+        enumTups.update(PathMillFace.ObjectFace.pocketPropertyEnumerations(dataType="raw"))
 
         self.populateCombobox(form, enumTups, comboToPropertyMap)
         return form

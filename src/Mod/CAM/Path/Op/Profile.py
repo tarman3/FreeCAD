@@ -258,15 +258,6 @@ class ObjectProfile(PathAreaOp.ObjectOp):
                     "that clears the stock left over from tool deflection",
                 ),
             ),
-            (
-                "App::PropertyLength",
-                "ExtensionOffset",
-                "Profile",
-                QT_TRANSLATE_NOOP(
-                    "App::Property",
-                    "Extension for working area limited by the model shape",
-                ),
-            ),
         ]
 
     @classmethod
@@ -308,7 +299,6 @@ class ObjectProfile(PathAreaOp.ObjectOp):
                 (translate("PathProfile", "Method1"), "Method 1"),
                 (translate("PathProfile", "Method2"), "Method 2"),
                 (translate("PathProfile", "Method3"), "Method 3"),
-                (translate("PathProfile", "Method4"), "Method 4"),
             ],
         }
 

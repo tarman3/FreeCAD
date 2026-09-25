@@ -46,6 +46,9 @@ translate = FreeCAD.Qt.translate
 class ObjectPocket(PathAreaOp.ObjectOp):
     """Base class for proxy objects of all pocket operations."""
 
+    # ClearingPattern values a subclass does not support
+    excludedClearingPatterns = ()
+
     @classmethod
     def pocketPropertyEnumerations(cls, dataType="data"):
         """pocketPropertyEnumerations(dataType="data")... return property enumeration lists of specified dataType.
@@ -79,6 +82,10 @@ class ObjectPocket(PathAreaOp.ObjectOp):
                 (translate("CAM_Pocket", "Manual"), "Manual"),
             ],
         }
+
+        enums["ClearingPattern"] = [
+            p for p in enums["ClearingPattern"] if p[1] not in cls.excludedClearingPatterns
+        ]
 
         if dataType == "raw":
             return enums
@@ -409,7 +416,8 @@ class ObjectPocket(PathAreaOp.ObjectOp):
                 ),
             )
             obj.FinishingPasses = (0, 0, 999999, 1)
-            obj.FinishingPasses = 1
+            # ZigZagOffset is replaced by ZigZag with a finishing pass
+            obj.FinishingPasses = 1 if obj.ClearingPattern == "ZigZagOffset" else 0
         if not hasattr(obj, "FinishingRampHelix"):
             obj.addProperty(
                 "App::PropertyBool",
@@ -420,6 +428,16 @@ class ObjectPocket(PathAreaOp.ObjectOp):
                     "Create helix ramp for finishing pass",
                 ),
             )
+        if hasattr(obj, "MinTravel"):
+            obj.removeProperty("MinTravel")
+
+        patterns = dict(self.pocketPropertyEnumerations())["ClearingPattern"]
+        if obj.getEnumerationsOfProperty("ClearingPattern") != patterns:
+            pattern = obj.ClearingPattern
+            if pattern == "ZigZagOffset":
+                pattern = "ZigZag"
+            obj.ClearingPattern = patterns
+            obj.ClearingPattern = pattern if pattern in patterns else patterns[0]
 
         Path.Log.track()
 
@@ -442,6 +460,7 @@ def SetupProperties():
     setup.append("FinishingPasses")
     setup.append("FinishingOffset")
     setup.append("FinishingOneStepDown")
+    setup.append("FinishingRampHelix")
     setup.append("StartAt")
     setup.append("StepDown")
     setup.append("StepOver")
