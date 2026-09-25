@@ -231,12 +231,21 @@ class ObjectProfile(PathAreaOp.ObjectOp):
                 ),
             ),
             (
-                "App::PropertyBool",
-                "HelixRamp",
-                "Profile",
+                "App::PropertyEnumeration",
+                "RampMethod",
+                "RampEntry",
                 QT_TRANSLATE_NOOP(
                     "App::Property",
                     "Create helix ramp for closed path\nHelix pitch limits by 'Step Down'",
+                ),
+            ),
+            (
+                "App::PropertyAngle",
+                "RampAngle",
+                "RampEntry",
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Angle of ramp",
                 ),
             ),
             (
@@ -292,6 +301,14 @@ class ObjectProfile(PathAreaOp.ObjectOp):
             "StartAt": [
                 (translate("PathProfile", "OutOfEdge"), "OutOfEdge"),
                 (translate("PathProfile", "Edge"), "Edge"),
+            ],
+            "RampMethod": [
+                (translate("PathProfile", "None"), "None"),
+                (translate("PathProfile", "Helix"), "Helix"),
+                (translate("PathProfile", "Method1"), "Method 1"),
+                (translate("PathProfile", "Method2"), "Method 2"),
+                (translate("PathProfile", "Method3"), "Method 3"),
+                (translate("PathProfile", "Method4"), "Method 4"),
             ],
         }
 
