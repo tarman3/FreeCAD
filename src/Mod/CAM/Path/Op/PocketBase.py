@@ -283,10 +283,11 @@ class ObjectPocket(PathAreaOp.ObjectOp):
         params["FromCenter"] = obj.StartAt == "Center"
         params["PocketStepover"] = (self.radius * 2) * (float(obj.StepOver) / 100)
         extraOffset = obj.ExtraOffset.Value
-        if obj.FinishingPasses:
-            extraOffset += obj.FinishingOffset.Value
         if self.pocketInvertExtraOffset():
             extraOffset = -extraOffset
+        if obj.FinishingPasses:
+            # leave stock for the finishing pass, always inward
+            extraOffset += obj.FinishingOffset.Value
         params["PocketExtraOffset"] = extraOffset
         params["ToolRadius"] = self.radius
         params["ForceMaxStepover"] = obj.ForceMaxStepOver
@@ -317,7 +318,10 @@ class ObjectPocket(PathAreaOp.ObjectOp):
         params["Fill"] = 0
         params["Coplanar"] = 0
         params["SectionCount"] = -1
-        params["Offset"] = -(self.radius + obj.ExtraOffset.Value)
+        extraOffset = obj.ExtraOffset.Value
+        if self.pocketInvertExtraOffset():
+            extraOffset = -extraOffset
+        params["Offset"] = -(self.radius + extraOffset)
         params["ExtraPass"] = 0
         params["Stepover"] = 0
 

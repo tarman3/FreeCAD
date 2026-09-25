@@ -209,7 +209,9 @@ class ObjectOp(PathOp.ObjectOp):
         Path.Log.track()
 
         areaParamsList = []
-        if "Path.Op.Pocket" in obj.Proxy.__module__:
+        # Pocket family (Pocket, PocketShape, MillFace) provides finishing areas
+        pocketOp = hasattr(self, "areaOpAreaParamsFinishing")
+        if pocketOp:
             # Pocket operation: split area and get order Clearing path -> Finishing pass
             if obj.ClearingPattern != "No clearing":
                 areaParamsList.append(self.areaOpAreaParams(obj, isHole))  # Clearing path
@@ -298,7 +300,7 @@ class ObjectOp(PathOp.ObjectOp):
                 ):
                     middleEdge = True
 
-            elif "Path.Op.Pocket" in obj.Proxy.__module__:
+            elif pocketOp:
                 if areaIndex >= len(areaParamsList) - obj.FinishingPasses:  # Pocket finishing pass
                     orientation = not baseOrientation
                     if obj.FinishingOneStepDown:

@@ -284,6 +284,10 @@ class SetupSheet:
         for opName, op in _RegisteredOps.items():
             opSetting = attrs.get(opName)
             if opSetting is not None:
+                if opSetting.get("ClearingPattern") == "ZigZagOffset":
+                    # ZigZagOffset was replaced by ZigZag with a finishing pass
+                    opSetting = dict(opSetting, ClearingPattern="ZigZag")
+                    opSetting.setdefault("FinishingPasses", "1")
                 prototype = op.prototype(opName)
                 for propName in op.properties():
                     value = opSetting.get(propName)
@@ -396,7 +400,13 @@ class SetupSheet:
                 propName = OpPropertyName(opName, prop)
                 if hasattr(self.obj, propName):
                     obj.setExpression(prop, None)  # clear any bound expression first
-                    setattr(obj, prop, getattr(self.obj, propName))
+                    value = getattr(self.obj, propName)
+                    if prop == "ClearingPattern" and value == "ZigZagOffset":
+                        # ZigZagOffset was replaced by ZigZag with a finishing pass
+                        value = "ZigZag"
+                        if not hasattr(self.obj, OpPropertyName(opName, "FinishingPasses")):
+                            obj.FinishingPasses = 1
+                    setattr(obj, prop, value)
         except Exception:
             Path.Log.info("SetupSheet has no support for {}".format(opName))
 
