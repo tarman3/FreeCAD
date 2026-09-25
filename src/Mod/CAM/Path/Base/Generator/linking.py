@@ -145,8 +145,14 @@ def get_linking_moves(
 
     collision_clearance = max(collision_clearance, 0) or 1
 
+    # Height just above the model under the travel, tried once the local
+    # retract height fails, so a hop over an obstacle does not have to go
+    # all the way up to the next clearance height
+    obstacleHeightTried = collision_model is None or retract_height_offset is None
+
     # Try each height
-    for i in range(len(heights)):
+    i = 0
+    while i < len(heights):
         plunge_heights = heights[: i + 1]
         if (
             split_plunge_height is not None
@@ -165,7 +171,44 @@ def get_linking_moves(
                 commands.append(cmd)
             return commands
 
+        if not obstacleHeightTried:
+            obstacleHeightTried = True
+            halfWidth = collision_clearance
+            if tool_shape:
+                halfWidth += max(tool_shape.BoundBox.XLength, tool_shape.BoundBox.YLength) / 2
+            elif tool_diameter:
+                halfWidth += tool_diameter / 2
+            top = _obstacle_top(start_position, target_position, collision_model, halfWidth)
+            if top is not None:
+                obstacleHeight = top + retract_height_offset
+                if heights[i] < obstacleHeight < heights[-1] and not any(
+                    Path.Geom.isRoughly(obstacleHeight, h) for h in heights
+                ):
+                    heights = sorted(heights + [obstacleHeight])
+        i += 1
+
     raise RuntimeError("No collision-free path found between start and target positions")
+
+
+def _obstacle_top(start: Vector, target: Vector, model: Part.Shape, halfWidth: float):
+    """Returns the highest Z of model within halfWidth of the XY travel from start to target"""
+    a = Vector(start.x, start.y, 0)
+    b = Vector(target.x, target.y, 0)
+    d = b - a
+    if d.Length < Path.Geom.Tolerance:
+        return None
+    d.normalize()
+    n = Vector(-d.y, d.x, 0) * halfWidth
+    a -= d * halfWidth
+    b += d * halfWidth
+    bb = model.BoundBox
+    z = Vector(0, 0, bb.ZMin - 1)
+    corner = [a + n + z, b + n + z, b - n + z, a - n + z]
+    prism = Part.Face(Part.makePolygon(corner + corner[:1])).extrude(Vector(0, 0, bb.ZLength + 2))
+    common = model.common(prism)
+    if common.isNull() or common.Volume < Path.Geom.Tolerance:
+        return None
+    return common.BoundBox.ZMax
 
 
 def make_linking_wire(start: Vector, target: Vector, heights: list) -> Part.Wire:
