@@ -316,12 +316,13 @@ class ObjectDeburr(PathEngraveBase.ObjectOp):
                 if obj.ProcessCircles:
                     holes.extend(innerCircles)
             else:  # angled face
-                fedges = [e for e in face.Edges if Path.Geom.isHorizontal(e)]
-                wires = [Part.Wire(se) for se in Part.sortEdges(fedges)]
-                wire = min(wires, key=lambda w: w.BoundBox.ZMax)
-                diffz = face.BoundBox.ZMax - wire.BoundBox.ZMax
-                wire.translate(FreeCAD.Vector(0, 0, diffz))
-                edges.extend(wire.Edges)
+                face_edges = [e for e in face.Edges if Path.Geom.isHorizontal(e)]
+                face_clusters = [cluster for cluster in Part.getSortedClusters(face_edges)]
+                bottom_cluster = min(face_clusters, key=lambda cluster: cluster[0].BoundBox.ZMax)
+                diffz = face.BoundBox.ZMax - bottom_cluster[0].BoundBox.ZMax
+                for edge in bottom_cluster:
+                    edge.translate(FreeCAD.Vector(0, 0, diffz))
+                edges.extend(bottom_cluster)
 
         wires3d = []
         for se in Part.sortEdges(edges):
