@@ -22,6 +22,7 @@
 ################################################################################
 
 import FreeCAD
+import Part
 import Path
 from Path.Base import Drillable
 import Path.Op.Area as PathAreaOp
@@ -29,11 +30,6 @@ import Path.Op.Base as PathOp
 from PathScripts import PathUtils
 import math
 from PySide.QtCore import QT_TRANSLATE_NOOP
-
-# lazily loaded modules
-from lazy_loader.lazy_loader import LazyLoader
-
-Part = LazyLoader("Part", globals(), "Part")
 
 translate = FreeCAD.Qt.translate
 
@@ -310,10 +306,9 @@ class ObjectProfile(PathAreaOp.ObjectOp):
             "RampMethod": [
                 (translate("PathProfile", "None"), "None"),
                 (translate("PathProfile", "Helix"), "Helix"),
-                (translate("PathProfile", "Method1"), "Method 1"),
-                (translate("PathProfile", "Method2"), "Method 2"),
-                (translate("PathProfile", "Method3"), "Method 3"),
-                (translate("PathProfile", "Method4"), "Method 4"),
+                (translate("PathProfile", "Method 1"), "Method 1"),
+                (translate("PathProfile", "Method 2"), "Method 2"),
+                (translate("PathProfile", "Method 3"), "Method 3"),
             ],
         }
 
@@ -380,7 +375,7 @@ class ObjectProfile(PathAreaOp.ObjectOp):
         sortingMode = 0 if obj.HandleMultipleFeatures == "Individually" else 2
         multiPassMode = 0 if obj.NumPasses > 1 else 2
         finishingMode = 0 if obj.FinishingPasses else 2
-        retractThreshold = 0 if obj.NumPasses + obj.FinishingPasses > 1 else 2
+        retractThresholdMode = 0 if obj.NumPasses + obj.FinishingPasses > 1 else 2
 
         obj.setEditorMode("Stepover", multiPassMode)
         obj.setEditorMode("Side", side)
@@ -390,7 +385,7 @@ class ObjectProfile(PathAreaOp.ObjectOp):
         obj.setEditorMode("processPerimeter", fc)
         obj.setEditorMode("UseLongestEdge", useLongestEdgeMode)
         obj.setEditorMode("SortingMode", sortingMode)
-        obj.setEditorMode("RetractThreshold", retractThreshold)
+        obj.setEditorMode("RetractThreshold", retractThresholdMode)
         obj.setEditorMode("StartAt", multiPassMode)
         obj.setEditorMode("FinishingOffset", finishingMode)
         obj.setEditorMode("FinishingOneStepDown", finishingMode)

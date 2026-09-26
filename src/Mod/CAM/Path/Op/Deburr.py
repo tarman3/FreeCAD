@@ -315,7 +315,6 @@ class ObjectDeburr(PathEngraveBase.ObjectOp):
                     holes.extend(innerHoles)
                 if obj.ProcessCircles:
                     holes.extend(innerCircles)
-
             else:  # angled face
                 fedges = [e for e in face.Edges if Path.Geom.isHorizontal(e)]
                 wires = [Part.Wire(se) for se in Part.sortEdges(fedges)]
@@ -338,13 +337,7 @@ class ObjectDeburr(PathEngraveBase.ObjectOp):
         index = obj.Side == "Inside"
         owires = []
         for wire in wires:
-            # Part.show(wire, "wire")
             owires.extend(PathOpUtil.offsetWire(wire, solids, offset, tol)[index])
-            # candidates = PathOpUtil.offsetWire(wire, None, offset, tol)
-            # if wire.isClosed():
-            #     owires.extend(candidates[index])
-            # else:
-            #     owires.extend(self.sortOffsetWires(candidates, solids)[index])
 
         for wire in holes:
             # inner wires of horizontal faces should be processed at opposite side
@@ -362,10 +355,6 @@ class ObjectDeburr(PathEngraveBase.ObjectOp):
 
         forward = obj.Direction == "CW"
         start_idx = max(0, obj.EntryPoint)
-
-        for w in owires:
-            continue
-            Part.show(w, "wire")
 
         self.buildpathocc(obj, owires, zValues, relZ=True, forward=forward, start_idx=start_idx)
 
@@ -451,18 +440,6 @@ class ObjectDeburr(PathEngraveBase.ObjectOp):
         offset = toolOffset + extraOffset
 
         return depth, offset
-
-    def sortOffsetWires(self, tupleList, solids):
-        """sortOffsetWires(wires, solids) ... method to sort open wire after offsetWire
-        Cut wires by solids
-        Place result of cutting in order of remaining length
-        Assumed that outside wire after cutting is longer than inner
-        """
-
-        def cutLength(wires):
-            return sum(e.Length for e in Part.Compound(wires).cut(solids).Edges)
-
-        return sorted(tupleList, key=cutLength, reverse=True)
 
     def separateFaceWires(self, face, offset):
         """separateFaceWires(face) ... return outerWire, innerHoles and innerCircles of face"""
