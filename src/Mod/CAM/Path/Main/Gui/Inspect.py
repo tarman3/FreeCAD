@@ -117,8 +117,7 @@ class GCodeEditorDialog(QtGui.QDialog):
 
         self.chkTool = QtGui.QCheckBox("Show tool")
         if self.tool is not None:
-            toolName = self.truncateStr(self.tool.Label)
-            self.chkTool.setText(translate("CAM_Inspect", "Show tool: %s") % toolName)
+            self.chkTool.setText(translate("CAM_Inspect", "Show tool: %s") % self.tool.Label)
             self.chkTool.setToolTip(
                 translate(
                     "CAM_Inspect",
@@ -155,13 +154,13 @@ class GCodeEditorDialog(QtGui.QDialog):
 
         self.updateText()
 
-    def truncateStr(self, s, max_length=40):
-        """Truncate string if it longer than max_length"""
-        if len(s) > max_length:
-            half_length = (max_length - 3) // 2
-            remainder = (max_length - 3) % 2
-            return s[: half_length + remainder] + "..." + s[-half_length:]
-        return s
+    def resizeEvent(self, event):
+        # Change widgets width with a dialog window
+        width = self.width() - 290  # take into account width of others widgets at the bottom
+        fm = self.chkTool.fontMetrics()
+        elided_text = fm.elidedText(self.tool.Label, QtCore.Qt.ElideMiddle, width)
+        self.chkTool.setText(elided_text)
+        super().resizeEvent(event)
 
     def cleanup(self):
         """Prepare for exit from Inspect"""
@@ -213,15 +212,13 @@ class GCodeEditorDialog(QtGui.QDialog):
             toolTipStr += f"Cycle time: {getattr(self.pathObj, 'CycleTime', 'N/A')}\n"
             if self.tc:
                 toolTipStr += f"\nTool number: {self.tc.ToolNumber}\n"
-                tcStr = self.truncateStr(self.tc.Label)
+                tcStr = self.tc.Label
                 if self.tc.Label != self.tc.Name:
-                    tcStr = f"{self.truncateStr(self.tc.Label)} ({self.truncateStr(self.tc.Name)})"
-                toolTipStr += f"Tool controller: {self.truncateStr(tcStr)}\n"
-                toolStr = self.truncateStr(self.tool.Label)
+                    tcStr = f"{self.tc.Label} ({self.tc.Name})"
+                toolTipStr += f"Tool controller: {tcStr}\n"
+                toolStr = self.tool.Label
                 if self.tool.Label != self.tool.Name:
-                    toolStr = (
-                        f"{self.truncateStr(self.tool.Label)} ({self.truncateStr(self.tool.Name)})"
-                    )
+                    toolStr = f"{self.tool.Label} ({self.tool.Name})"
                 toolTipStr += f"Tool: {toolStr}\n"
                 diaStr = "N/A"
                 if d := getattr(self.tool, "Diameter", None):

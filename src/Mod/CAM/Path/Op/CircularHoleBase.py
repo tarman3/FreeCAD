@@ -138,11 +138,11 @@ class ObjectOp(PathOp.ObjectOp):
             if isinstance(shape, Part.Edge) and isinstance(shape.Curve, Part.Circle):
                 return shape.Curve.Radius * 2
 
-            if isinstance(shape, Part.Face):
-                edges = [e for e in shape.Edges if isinstance(e.Curve, Part.Circle)]
-                if edges:
-                    edge = min(edges, key=lambda e: e.BoundBox.ZMax)  # bottom circular edge
-                    return edge.Curve.Radius * 2
+            if isinstance(shape, Part.Face) and (
+                edges := [e for e in shape.Edges if isinstance(e.Curve, Part.Circle)]
+            ):
+                edge = min(edges, key=lambda e: e.BoundBox.ZMax)  # bottom circular edge
+                return edge.Curve.Radius * 2
 
             # for all other shapes the diameter is just the dimension in X.
             # This may be inaccurate as the BoundBox is calculated on the tessellated geometry
@@ -221,7 +221,7 @@ class ObjectOp(PathOp.ObjectOp):
                     if Path.Geom.pointsCoincide((pos.x, pos.y), (hole["x"], hole["y"])):
                         if diam > hole["d"] and not Path.Geom.isRoughly(diam, hole["d"]):
                             # use bigger hole and disable with less diameter
-                            name = f"{base.Name}.{hole["sub"]}"
+                            name = f"{base.Name}.{hole['sub']}"
                             disabled = obj.Disabled
                             disabled.append(name)
                             obj.Disabled = disabled
