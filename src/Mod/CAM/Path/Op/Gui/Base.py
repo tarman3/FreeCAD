@@ -350,7 +350,7 @@ class ViewProvider:
 
                     job = PathUtils.findParentJob(self.operation)
                     workplane = PathWorkplane.createWorkplane(
-                        job, picked, sub, label="%s.%s" % (picked.Label, sub)
+                        job, picked, sub, label="f{picked.Label.{sub}"
                     )
                     self.operation.Workplane = workplane
                     FreeCAD.ActiveDocument.recompute()
@@ -360,7 +360,7 @@ class ViewProvider:
                         + "\n"
                     )
                 except Exception as e:
-                    FreeCAD.Console.PrintError("Error setting work plane: %s\n" % e)
+                    FreeCAD.Console.PrintError(f"Error setting work plane: {e}\n")
                 finally:
                     self.active = False
                     FreeCADGui.Selection.removeObserver(self)
@@ -1267,6 +1267,8 @@ class TaskPanelHeightsPage(TaskPanelPage):
             mode = self.form.CollisionAvoidanceStrategy.currentData()
             if mode and obj.CollisionAvoidanceStrategy != mode:
                 obj.CollisionAvoidanceStrategy = mode
+            if obj.FlexyHeight != self.form.chkFlexyHeight:
+                obj.FlexyHeight = self.form.chkFlexyHeight.isChecked()
 
     def setFields(self, obj):
         self.safeHeight.updateWidget()
@@ -1286,6 +1288,8 @@ class TaskPanelHeightsPage(TaskPanelPage):
                 self.form.CollisionAvoidanceStrategy.blockSignals(True)
                 self.form.CollisionAvoidanceStrategy.setCurrentIndex(index)
                 self.form.CollisionAvoidanceStrategy.blockSignals(False)
+            self.form.chkFlexyHeight.setChecked(obj.FlexyHeight)
+
         if hasattr(obj, "Workplane") and getattr(self, "hasWorkplaneSelector", False):
             self.populateWorkplanes(obj)
             linked = obj.Workplane
@@ -1312,6 +1316,7 @@ class TaskPanelHeightsPage(TaskPanelPage):
         if PathOp.FeatureLinking & self.features:
             signals.append(self.form.CollisionClearance.editingFinished)
             signals.append(self.form.CollisionAvoidanceStrategy.currentIndexChanged)
+            signals.append(self.form.chkFlexyHeight.checkStateChanged)
         signals.append(self.form.workplane.currentIndexChanged)
         return signals
 

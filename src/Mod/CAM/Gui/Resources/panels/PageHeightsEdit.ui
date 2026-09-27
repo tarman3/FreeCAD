@@ -373,6 +373,16 @@ Tool Shape: safest - checks clearance using the cross section of the tool shape
         </property>
        </widget>
       </item>
+      <item row="2" column="2">
+       <widget class="QCheckBox" name="chkFlexyHeight">
+        <property name="text">
+         <string>Flexy Height</string>
+        </property>
+        <property name="toolTip">
+         <string>Define additinal height above the model</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

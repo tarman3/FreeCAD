@@ -100,6 +100,7 @@ def get_linking_moves(
     skip_if_no_collision: bool = False,
     collision_clearance: float = 1,
     split_plunge_height: float | None = None,
+    flexy_clearance_height: bool = False,
 ) -> list:
     """
     Generate linking moves from start to target position.
@@ -112,6 +113,9 @@ def get_linking_moves(
     - tool_shape: cross-section of the tool shape (most long computation)
     - tool_diameter: uses horizontal face with width of the tool diameter (middle computation)
     - if no tool_shape and tool_diameter uses simple wire (fast computation)
+
+    flexy_clearance_height allows to define additinal height above the model
+    with a collision_clearance
     """
     if Path.Geom.pointsCoincide(start_position, target_position):
         return []
@@ -146,7 +150,8 @@ def get_linking_moves(
     collision_clearance = max(collision_clearance, 0) or 1
 
     # Try each height
-    for i in range(len(heights)):
+    i = 0
+    while i < len(heights):
         plunge_heights = heights[: i + 1]
         if (
             split_plunge_height is not None
@@ -165,7 +170,33 @@ def get_linking_moves(
                 commands.append(cmd)
             return commands
 
+        if flexy_clearance_height and collision_model:
+            flexy_clearance_height = False
+            extra_height = get_extra_clearance_height(
+                start_position, target_position, heights[i:], collision_clearance, collision_model
+            )
+            print("flexy extra_height", extra_height)
+            if extra_height is not None:
+                heights = sorted(heights + [extra_height])
+        i += 1
+
     raise RuntimeError("No collision-free path found between start and target positions")
+
+
+def get_extra_clearance_height(start, target, heights, collision_clearance, solid):
+    """Return additinal height above the model"""
+    extra_height = None
+    p1 = Vector(start.x, start.y, solid.BoundBox.ZMax)
+    p2 = Vector(target.x, target.y, solid.BoundBox.ZMax)
+    edge = Part.makeLine(p1, p2)
+    dist = edge.distToShape(solid)[0]
+    candidate_height = solid.BoundBox.ZMax - dist + collision_clearance
+    if heights[0] < candidate_height < heights[-1] and not any(
+        Path.Geom.isRoughly(candidate_height, h) for h in heights
+    ):
+        extra_height = candidate_height
+
+    return extra_height
 
 
 def make_linking_wire(start: Vector, target: Vector, heights: list) -> Part.Wire:

@@ -590,6 +590,7 @@ class ObjectOp(PathOp.ObjectOp):
                 "collision_clearance": obj.CollisionClearance.Value,
                 "retract_height_offset": None,
                 "split_plunge_height": obj.SafeHeight.Value,
+                "flexy_clearance_height": obj.FlexyHeight,
             }
             if obj.CollisionAvoidanceStrategy == "Clearance Height":
                 linkingArgs["heights_clearance"] = obj.ClearanceHeight.Value

@@ -269,6 +269,12 @@ class ObjectOp:
             "Linking",
             QT_TRANSLATE_NOOP("App::Property", "Distance for collision detection"),
         )
+        obj.addProperty(
+            "App::PropertyBool",
+            "FlexyHeight",
+            "Linking",
+            QT_TRANSLATE_NOOP("App::Property", "Define additinal height above the model"),
+        )
 
     def addExtension(self, obj):
         obj.addProperty(
@@ -735,6 +741,13 @@ class ObjectOp:
                     setattr(obj, n[0], n[1])
             obj.CollisionAvoidanceStrategy = "Clearance Height"
             self.applyExpression(obj, "CollisionClearance", "OpToolDiameter")
+        if FeatureLinking & features and not hasattr(obj, "FlexyHeight"):
+            obj.addProperty(
+                "App::PropertyBool",
+                "FlexyHeight",
+                "Linking",
+                QT_TRANSLATE_NOOP("App::Property", "Define additinal height above the model"),
+            )
 
         self._migrateWorkplane(obj)
 
