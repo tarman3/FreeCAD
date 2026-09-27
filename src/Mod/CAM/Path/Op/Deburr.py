@@ -384,14 +384,22 @@ class ObjectDeburr(PathEngraveBase.ObjectOp):
         walloffset = offset if obj.Side == "Outside" else -offset
         for wire3d in wires3d:
             dwire3d = PathOpUtil.discretizeWire(wire3d)
+            # Part.show(dwire3d, "dwire3d")
             dwire3d = PathOpUtil.orientWire(dwire3d, True)
+            # Part.show(dwire3d, "dwire3d_orient")
             wall = dwire3d.extrude(FreeCAD.Vector(0, 0, 10))
             owall = wall.makeOffsetShape(walloffset, tolerance=tol, join=2)
+            # Part.show(owall, "owall")
 
             edges = [e for e in owall.Edges if not Path.Geom.isVertical(e)]
-            owire3d = Part.Wire(Part.__sortEdges__(edges))
+            # print("edges", len(edges))
+            # Part.show(Part.Compound(edges), "edges compound")
+            owire3d = Part.Wire(Part.getSortedClusters(edges)[0])
+            # print("owire3d edges", len(owire3d.Edges))
+            # Part.show(owire3d, "owire3d")
             diffz = wire3d.BoundBox.ZMax - owire3d.BoundBox.ZMax - depth
             owire3d.translate(FreeCAD.Vector(0, 0, diffz))
+            # Part.shownm(owire3d, "owire3d_translated")
 
             pathParams["shapes"] = [owire3d]
             pathParams["start"] = startPoint
