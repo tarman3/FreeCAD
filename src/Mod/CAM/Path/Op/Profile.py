@@ -117,19 +117,28 @@ class ObjectProfile(PathAreaOp.ObjectOp):
                 "App::PropertyBool",
                 "processHoles",
                 "Profile",
-                QT_TRANSLATE_NOOP("App::Property", "Profile holes as well as the outline"),
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Profile holes as well as the outline.\nOnly with horizontal faces.",
+                ),
             ),
             (
                 "App::PropertyBool",
                 "processPerimeter",
                 "Profile",
-                QT_TRANSLATE_NOOP("App::Property", "Profile the outline"),
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Profile the outline.\nOnly with horizontal faces.",
+                ),
             ),
             (
                 "App::PropertyBool",
                 "processCircles",
                 "Profile",
-                QT_TRANSLATE_NOOP("App::Property", "Profile round holes"),
+                QT_TRANSLATE_NOOP(
+                    "App::Property",
+                    "Profile round holes.\nOnly with horizontal faces.",
+                ),
             ),
             (
                 "App::PropertyEnumeration",
@@ -227,7 +236,7 @@ class ObjectProfile(PathAreaOp.ObjectOp):
                 "RampEntry",
                 QT_TRANSLATE_NOOP(
                     "App::Property",
-                    "Create helix ramp for closed path\nHelix pitch limits by 'Step Down'",
+                    "Apply ramp entry",
                 ),
             ),
             (
@@ -277,7 +286,7 @@ class ObjectProfile(PathAreaOp.ObjectOp):
                 (translate("PathProfile", "Manual"), "Manual"),
             ],
             "StartAt": [
-                (translate("PathProfile", "OutOfEdge"), "OutOfEdge"),
+                (translate("PathProfile", "Out of edge"), "Out of edge"),
                 (translate("PathProfile", "Edge"), "Edge"),
             ],
             "RampMethod": [
@@ -286,6 +295,7 @@ class ObjectProfile(PathAreaOp.ObjectOp):
                 (translate("PathProfile", "Method 1"), "Method 1"),
                 (translate("PathProfile", "Method 2"), "Method 2"),
                 (translate("PathProfile", "Method 3"), "Method 3"),
+                (translate("PathProfile", "Method 4"), "Method 4"),
             ],
         }
 
@@ -318,6 +328,7 @@ class ObjectProfile(PathAreaOp.ObjectOp):
             "Stepover": 0,
             "NumPasses": (1, 1, 999999, 1),
             "FinishingPasses": (0, 0, 999999, 1),
+            "RampAngle": 30,
         }
 
     def areaOpApplyPropertyDefaults(self, obj, job, propList):
@@ -378,6 +389,12 @@ class ObjectProfile(PathAreaOp.ObjectOp):
         for prop in ["JoinType", "MiterLimit"]:
             if hasattr(obj, prop):
                 obj.removeProperty(prop)
+
+        if "OutOfEdge" in obj.getEnumerationsOfProperty("StartAt"):
+            current = obj.StartAt
+            current = "Out of edge" if current.casefold() == "outofedge" else current
+            obj.StartAt = ("Edge", "Out of edge")
+            obj.StartAt = current
 
         self.propertiesReady = False
         self.initAreaOpProperties(obj, warn=True)

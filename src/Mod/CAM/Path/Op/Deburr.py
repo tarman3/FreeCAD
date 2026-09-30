@@ -297,16 +297,12 @@ class ObjectDeburr(PathEngraveBase.ObjectOp):
         super().opOnChanged(obj, prop)
 
     def opExecute(self, obj):
-        Path.Log.track(obj.Label)
-
         if not obj.Base:
             return
 
         tol = self.job.GeometryTolerance.Value or 0.01
         solids = [base.Shape for base in self.model if base.Shape.Faces]
         depth, offset = self.toolDepthAndOffset(obj.Width.Value, obj.ExtraDepth.Value, self.tool)
-
-        Path.Log.track(obj.Label, depth, offset)
 
         edges = []
         wires = []
@@ -368,12 +364,10 @@ class ObjectDeburr(PathEngraveBase.ObjectOp):
 
         zValues = []
         z = 0
-        if obj.StepDown.Value != 0:
-            while z + obj.StepDown.Value < depth:
-                z += obj.StepDown.Value
-                zValues.append(z)
+        while Path.Geom.isStrictlyLess(z + obj.StepDown.Value, depth):
+            z += obj.StepDown.Value
+            zValues.append(z)
         zValues.append(depth)
-        Path.Log.track(obj.Label, depth, zValues)
 
         forward = obj.Direction == "CW"
         start_idx = max(0, obj.EntryPoint)
