@@ -354,7 +354,7 @@ class ObjectJob:
         if not getattr(obj, "Workplanes", None) or not getattr(obj, "Operations", None):
             return
         held = {o.Name for o in obj.Workplanes.Group}
-        for op in obj.Operations.Group:
+        for op in getOperations(obj):
             workplane = getattr(op, "Workplane", None)
             if (
                 workplane is not None
@@ -476,16 +476,16 @@ class ObjectJob:
         if getattr(obj, "Operations", None):
             # the first to tear down are the ops, they depend on other resources
             Path.Log.debug("taking down ops: %s" % [o.Name for o in self.allOperations()])
-            for op in getOperations(obj):
-                if (
-                    not op.ViewObject
-                    or not hasattr(op.ViewObject.Proxy, "onDelete")
-                    or op.ViewObject.Proxy.onDelete(op.ViewObject, ())
+            for el in reversed(getOperations(obj, True)):
+                if el.hasExtension("App::GroupExtension"):
+                    doc.removeObject(el.Name)
+                elif (
+                    not el.ViewObject
+                    or not hasattr(el.ViewObject.Proxy, "onDelete")
+                    or el.ViewObject.Proxy.onDelete(el.ViewObject, ())
                 ):
-                    PathUtil.clearExpressionEngine(op)
-                    doc.removeObject(op.Name)
-            for el in obj.Operations.Group:
-                doc.removeObject(el.Name)
+                    PathUtil.clearExpressionEngine(el)
+                    doc.removeObject(el.Name)
 
             obj.Operations.Group = []
             doc.removeObject(obj.Operations.Name)

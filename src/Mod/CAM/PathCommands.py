@@ -218,7 +218,7 @@ class _ToggleOperation:
         setTrue = not all(states) and any(states)  # some operations not Active
         for op in operations:
             baseOp = Path.Dressup.Utils.baseOp(op)
-            baseOp.Active = True if setTrue else not baseOp.Active
+            baseOp.Active = setTrue or not baseOp.Active
 
         FreeCAD.ActiveDocument.recompute()
 

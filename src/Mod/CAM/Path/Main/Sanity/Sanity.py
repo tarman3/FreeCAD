@@ -266,7 +266,7 @@ class CAMSanity:
         # the tool goes. The Job's own Path is empty; its range is its
         # operations'.
         placed = {}
-        for op in obj.Operations.Group:
+        for op in PathUtils.getOperations(obj):
             path = PathUtils.getPathWithPlacement(op)
             if path.BoundBox.isValid():
                 placed[op.Name] = path.BoundBox

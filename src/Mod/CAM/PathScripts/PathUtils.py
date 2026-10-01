@@ -627,7 +627,8 @@ def addToJob(obj, jobname=None):
 
 
 def getOperations(obj, addGroups=False):
-    """getOperations() ... returns all operations from job or group, includes sub groups"""
+    """getOperations() ... returns all operations from job or group, includes sub groups
+    addGroups: returns list with group objects"""
 
     def getOpsFromGroup(group):
         operations = []
