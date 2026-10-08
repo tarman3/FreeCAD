@@ -186,19 +186,13 @@ class ObjectPocket(PathPocketBase.ObjectPocket):
                 self.horiz, keepOrder=keepOrder, tol=tol
             )
 
-            # Move all faces to final depth before extrusion
+            # Move all faces to (final depth - 1 mm) before extrusion
+            # Extrude all faces up to (StartDepth + 1 mm) to get the removal shapes
+            # Use extra length to exclude precision errors while create sections
             for h in self.horizontal:
-                h.translate(FreeCAD.Vector(0.0, 0.0, obj.FinalDepth.Value - h.BoundBox.ZMin))
-
-            # Extrude all faces up to StartDepth to get the removal shapes.
-            # Area cannot section a solid only microns tall when the face has curved edges,
-            # so extrude at least 1 mm.
-            # The extra height above StartDepth is never sectioned:
-            # the depth parameters come from the operation, not from the shape.
-            extent = FreeCAD.Vector(0, 0, max(obj.StartDepth.Value - obj.FinalDepth.Value, 1))
-            self.removalshapes = [
-                (face.removeSplitter().extrude(extent), False) for face in self.horizontal
-            ]
+                h.translate(FreeCAD.Vector(0, 0, obj.FinalDepth.Value - h.BoundBox.ZMax - 1))
+            ext = FreeCAD.Vector(0, 0, obj.StartDepth.Value - obj.FinalDepth.Value + 2)
+            self.removalshapes = [(f.removeSplitter().extrude(ext), False) for f in self.horizontal]
 
         # Tessellate all working faces
         # for (shape, hole) in self.removalshapes:
