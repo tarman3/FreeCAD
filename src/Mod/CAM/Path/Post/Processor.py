@@ -53,6 +53,7 @@ from Path.Post.CAMErrors import CAMError, CAMValueError, CAMAttributeError, CAMN
 from Path.Base.MachineState import MachineState
 import Path.Base.Util as PathUtil
 from Machine.models.machine import MachineFactory, OutputUnits, ToolheadType
+from PathScripts.PathUtils import getOperations
 
 translate = FreeCAD.Qt.translate
 
@@ -902,9 +903,7 @@ class PostProcessor:
             self._operations = job["operations"]
         if not self._operations:
             # get all operations from 'Operations' group
-            self._operations = (
-                getattr(self._job.Operations, "Group", []) if self._job is not None else []
-            )
+            self._operations = getOperations(self._job)
 
     @classmethod
     def exists(cls, processor):
@@ -1067,7 +1066,7 @@ class PostProcessor:
         # Processing options
         for (
             option
-        ) in "split_arcs f_for_rapid_moves translate_rapid_moves translate_drill_cycles tool_change xy_before_z_after_tool_change filter_inefficient_moves".split(
+        ) in "split_arcs translate_rapid_moves translate_drill_cycles tool_change xy_before_z_after_tool_change filter_inefficient_moves".split(
             " "
         ):
             self.values[option.upper()] = getattr(self._machine.processing, option)
@@ -1356,6 +1355,15 @@ class PostProcessor:
                                     gcodeheader.add_fixture(fixture_name)
 
         return gcodeheader
+
+    def _expand_placement(self, postables):
+        """Apply placement to path if needed."""
+        from PathScripts.PathUtils import getPathWithPlacement
+
+        for section_name, sublist in postables:
+            for item in sublist:
+                if item.path and hasattr(item, "Placement"):
+                    item.path = getPathWithPlacement(item)
 
     def _add_line_numbers(self, postables):
         """Add N word if we are line-numbering
@@ -2878,6 +2886,7 @@ class PostProcessor:
         # postables = self._expand_pre_job(postables) # FIXME: need an item for a job, handled by _expand_prefix for now
         postables = self._expand_pre_item(postables)
 
+        # self._expand_placement(postables)  # not needed anymore after _expand_workplane_frames()
         self._expand_canned_cycles(postables)
         self._expand_translate_drill_cycles(postables)
         self._expand_split_arcs(postables)
@@ -3761,19 +3770,18 @@ class PostProcessor:
             if parameter in params:
                 # Check if we should suppress duplicate parameters
                 current_value = params[parameter]
-                if not self.values["OUTPUT_DOUBLES"]:
-                    # Suppress parameters that haven't changed
-                    if (
-                        parameter in self.machine_state.Tracked
-                        and self.machine_state.previous[parameter] == current_value
-                    ):
-                        continue  # Skip this parameter
-                elif (
+                if (
                     parameter == "F"
                     and command_name in Constants.GCODE_MOVE_RAPID
-                    and (not self.values["F_FOR_RAPID_MOVES"] or current_value == 0.0)
-                ):
-                    continue  # no F for G0, or the F is 0.0 which should be skipped too
+                    and not self.values["F_FOR_RAPID_MOVES"]
+                ):  # Skip F for G0
+                    continue
+                if (
+                    not self.values["OUTPUT_DOUBLES"]
+                    and parameter in self.machine_state.Tracked
+                    and self.machine_state.previous[parameter] == current_value
+                ):  # Suppress parameters that haven't changed
+                    continue  # Skip this parameter
 
                 formatted_value = self.format_parameter(parameter, current_value, command_name)
                 command_line.append(f"{parameter}{formatted_value}")
