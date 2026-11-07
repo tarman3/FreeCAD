@@ -75,7 +75,7 @@ class CommandCAMSanity:
         if pref_report_file.strip():
             # If the preference is an absolute or relative path, expand substitutions
             template_path = pref_report_file
-            expanded = apply_path_substitutions(template_path, obj)
+            expanded = apply_path_substitutions(template_path, job)
             # Ensure .html extension
             if not expanded.lower().endswith(".html"):
                 expanded += ".html"

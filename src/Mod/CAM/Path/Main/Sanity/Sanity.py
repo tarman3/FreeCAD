@@ -27,7 +27,7 @@ to make sure tools are selected and configured and defaults have been revised
 """
 
 from collections import Counter
-import datetime
+from datetime import datetime
 import FreeCAD
 import Path
 import Path.Log
@@ -105,7 +105,7 @@ class CAMSanity:
 
         path = f"{FreeCAD.getHomePath()}Mod/CAM/Path/Main/Sanity/{squawk_icon}.svg"
 
-        date = datetime.datetime.now(tz=datetime.timezone.utc) if date is None else date
+        date = datetime.now() if date is None else date
         local_date_str = date.strftime("%c")
         squawk = {
             "Date": local_date_str,
@@ -157,9 +157,7 @@ class CAMSanity:
         if lastmod:
             try:
                 # Parse ISO 8601 string and format
-                data["LastModifiedDate"] = datetime.datetime.fromisoformat(str(lastmod)).strftime(
-                    "%c"
-                )
+                data["LastModifiedDate"] = datetime.fromisoformat(str(lastmod)).strftime("%c")
             except Exception:
                 data["LastModifiedDate"] = str(lastmod)
         else:
