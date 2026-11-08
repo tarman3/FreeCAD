@@ -563,11 +563,18 @@ class ObjectOp(PathOp.ObjectOp):
             and obj.HandleMultipleFeatures != "Collectively"
         ):
             locations = []
-            for tup in shapeTups:
-                shp = tup[0]
-                locations.append({"x": shp.BoundBox.XMax, "y": shp.BoundBox.YMax, "tup": tup})
-            locations = PathUtils.sort_locations(locations, ["x", "y"])
-            shapeTups = [j["tup"] for j in locations]
+            for i, tup in enumerate(shapeTups):
+                bb = tup[0].BoundBox
+                locations.append({"x": bb.XMin, "y": bb.YMin, "index": i})
+
+            start = self.startPoint(obj)
+            startPoint = [start.x, start.y]
+            end = self.toFrame(obj.EndPoint)
+            endPoint = [end.x, end.y] if obj.UseEndPoint else None
+            locations = PathUtils.sort_locations_tsp(
+                locations, ["x", "y"], startPoint=startPoint, endPoint=endPoint
+            )
+            shapeTups = [shapeTups[loc["index"]] for loc in locations]
 
         # Adjust tuples length received from other PathWB tools/operations
         for i in range(len(shapeTups)):

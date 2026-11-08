@@ -473,13 +473,27 @@ class ObjectOp:
                 "App::PropertyVectorDistance",
                 "StartPoint",
                 "Start Point",
-                QT_TRANSLATE_NOOP("App::Property", "The start point of this path"),
+                QT_TRANSLATE_NOOP(
+                    "App::Property", "The start point of this path and for automatic sorting"
+                ),
             )
             obj.addProperty(
                 "App::PropertyBool",
                 "UseStartPoint",
                 "Start Point",
                 QT_TRANSLATE_NOOP("App::Property", "Make True, if specifying a Start Point"),
+            )
+            obj.addProperty(
+                "App::PropertyVectorDistance",
+                "EndPoint",
+                "Start Point",
+                QT_TRANSLATE_NOOP("App::Property", "End point for automatic sorting"),
+            )
+            obj.addProperty(
+                "App::PropertyBool",
+                "UseEndPoint",
+                "Start Point",
+                QT_TRANSLATE_NOOP("App::Property", "Enable to use end point for automatic sorting"),
             )
 
         if FeatureDiameters & features:
@@ -771,6 +785,21 @@ class ObjectOp:
                     "Define additional height above the model"
                     "\nAllowed only for strategies 'Line of Sight', 'Tool Diameter' and 'Tool Shape'",
                 ),
+            )
+
+        if FeatureStartPoint & features and not hasattr(obj, "EndPoint"):
+            obj.addProperty(
+                "App::PropertyVectorDistance",
+                "EndPoint",
+                "Start Point",
+                QT_TRANSLATE_NOOP("App::Property", "End point for automatic sorting"),
+            )
+        if FeatureStartPoint & features and not hasattr(obj, "UseEndPoint"):
+            obj.addProperty(
+                "App::PropertyBool",
+                "UseEndPoint",
+                "Start Point",
+                QT_TRANSLATE_NOOP("App::Property", "Enable to use end point for automatic sorting"),
             )
 
         self._migrateWorkplane(obj)
