@@ -97,15 +97,12 @@ class ObjectOp(PathOp.ObjectOp):
             linking_kwargs["solids"] = solids
             linking_kwargs["tool_shape"] = obj.ToolController.Tool.BitBody.Shape
 
+        # approximate, sort, and orient wires
         if getattr(obj, "Approximation", False):
             wires = [PathOpUtil.approximateWire(w, tolerance=tol) for w in wires]
-
-        # decompose and orient wires to get edges in right order
-        wires = [
-            PathOpUtil.orientWire(Part.Wire(se), forward=forward)
-            for wire in wires
-            for se in Part.sortEdges(wire.Edges)
-        ]
+        else:
+            wires = [Part.Wire(se) for wire in wires for se in Part.sortEdges(wire.Edges)]
+        wires = [PathOpUtil.orientWire(w, forward=forward) for w in wires]
 
         # sorting wires
         if len(wires) > 1 and getattr(obj, "SortingMode", None) == "Automatic":

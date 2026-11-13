@@ -219,13 +219,11 @@ def discretizeWire(wire, tolerance=0.01):
 
 
 def approximateWire(wire, tolerance=0.01):
-    """approximateWire approximates any non-line/arc edges with lines or arcs.
-    Edges that are lines or circular arcs are kept as-is.
+    """approximates any non-line/arc edges with lines and arcs and calls Part.__sortEdges__.
     tolerance: Deflection tolerance for approximation. Must be positive if wire contains non-line/arc edges.
     Returns the wire with non-line/arc edges replaced by arcs and line segments.
     """
     processed_edges = []
-    modified = False
     for edge in wire.Edges:
         curve = edge.Curve
         if isinstance(curve, (Part.Line, Part.LineSegment, Part.Circle, Part.ArcOfCircle)):
@@ -237,7 +235,6 @@ def approximateWire(wire, tolerance=0.01):
                 raise ValueError(
                     "tolerance parameter is required to be a positive value to approximate non-line/arc edges"
                 )
-            modified = True
             original = edge
 
             # Convert to BSpline first if appropriate, to enable arc fitting
@@ -277,10 +274,7 @@ def approximateWire(wire, tolerance=0.01):
 
             processed_edges.extend(new_edges)
 
-    # Reassemble the wire if any edges were replaced
-    if modified:
-        return Part.Wire(Part.__sortEdges__(processed_edges))
-    return wire
+    return Part.Wire(Part.__sortEdges__(processed_edges))
 
 
 def wireToCArea(wire, tolerance=0.01):
