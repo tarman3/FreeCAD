@@ -210,22 +210,12 @@ def orientWire(w, forward=True):
     return wire
 
 
-def discretizeWire(wire, tolerance=0.01):
-    """discretizeWire(wire) ... discretize any non-line edges with lines."""
-    ps = wire.discretize(Deflection=tolerance)
-    line_edges = [Part.makeLine(ps[i], ps[i + 1]) for i in range(len(ps) - 1)]
-
-    return Part.Wire(line_edges)
-
-
 def approximateWire(wire, tolerance=0.01):
-    """approximateWire approximates any non-line/arc edges with lines or arcs.
-    Edges that are lines or circular arcs are kept as-is.
+    """approximates any non-line/arc edges with lines and arcs and calls Part.__sortEdges__.
     tolerance: Deflection tolerance for approximation. Must be positive if wire contains non-line/arc edges.
     Returns the wire with non-line/arc edges replaced by arcs and line segments.
     """
     processed_edges = []
-    modified = False
     for edge in wire.Edges:
         curve = edge.Curve
         if isinstance(curve, (Part.Line, Part.LineSegment, Part.Circle, Part.ArcOfCircle)):
@@ -237,7 +227,7 @@ def approximateWire(wire, tolerance=0.01):
                 raise ValueError(
                     "tolerance parameter is required to be a positive value to approximate non-line/arc edges"
                 )
-            modified = True
+            original = edge
 
             # Convert to BSpline first if appropriate, to enable arc fitting
             if isinstance(curve, (Part.Ellipse, Part.Hyperbola, Part.Parabola)):
@@ -247,27 +237,36 @@ def approximateWire(wire, tolerance=0.01):
             elif isinstance(curve, Part.BezierCurve):
                 # Convert BezierCurve to BSpline
                 curve = edge.Curve.toBSpline()
-                edge = curve.toShape()
+                edge = curve.toShape(*edge.ParameterRange)
 
             if isinstance(edge.Curve, Part.BSplineCurve):
                 # Convert BSpline to arcs
                 curve = edge.Curve
                 trimmed_curve = curve.trim(*edge.ParameterRange)
                 curves = trimmed_curve.toBiArcs(tolerance)
-                for curve in curves:
-                    processed_edges.append(curve.toShape())
+                new_edges = [curve.toShape() for curve in curves]
             else:
                 # For other curve types, fall back to discretization to line segments
                 vertices = edge.discretize(Deflection=tolerance)
-                line_edges = [
+                new_edges = [
                     Part.makeLine(vertices[i], vertices[i + 1]) for i in range(len(vertices) - 1)
                 ]
-                processed_edges.extend(line_edges)
 
-    # Reassemble the wire if any edges were replaced
-    if modified:
-        return Part.Wire(Part.__sortEdges__(processed_edges))
-    return wire
+            # Overwrite start/end vertices of the approximated edge with the originals
+            new_edges[0] = new_edges[0].replaceShape(
+                [(new_edges[0].firstVertex(), original.firstVertex())]
+            )
+            new_edges[-1] = new_edges[-1].replaceShape(
+                [(new_edges[-1].lastVertex(), original.lastVertex())]
+            )
+
+            # Preserve edge reversal in the approximation
+            if original.Orientation == "Reversed":
+                new_edges = [e.reversed() for e in reversed(new_edges)]
+
+            processed_edges.extend(new_edges)
+
+    return Part.Wire(Part.__sortEdges__(processed_edges))
 
 
 def wireToCArea(wire, tolerance=0.01):
@@ -283,12 +282,8 @@ def wireToCArea(wire, tolerance=0.01):
     c = area.Curve()
 
     # Approximate wire as lines and arcs
-    coincideTolerance = getCoincideTolerance(wire.Edges)
-    if coincideTolerance is None or coincideTolerance > Path.Geom.Tolerance:
-        wire = discretizeWire(wire, tolerance)
-    else:
-        wire = approximateWire(wire, tolerance)
-    edges = _orientEdges(Part.__sortEdges__(wire.Edges))
+    wire = approximateWire(wire, tolerance)
+    edges = wire.Edges
 
     # Add the first point (start of first edge)
     if len(edges) > 0:
