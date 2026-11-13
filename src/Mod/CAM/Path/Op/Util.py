@@ -238,6 +238,7 @@ def approximateWire(wire, tolerance=0.01):
                     "tolerance parameter is required to be a positive value to approximate non-line/arc edges"
                 )
             modified = True
+            original = edge
 
             # Convert to BSpline first if appropriate, to enable arc fitting
             if isinstance(curve, (Part.Ellipse, Part.Hyperbola, Part.Parabola)):
@@ -254,15 +255,27 @@ def approximateWire(wire, tolerance=0.01):
                 curve = edge.Curve
                 trimmed_curve = curve.trim(*edge.ParameterRange)
                 curves = trimmed_curve.toBiArcs(tolerance)
-                for curve in curves:
-                    processed_edges.append(curve.toShape())
+                new_edges = [curve.toShape() for curve in curves]
             else:
                 # For other curve types, fall back to discretization to line segments
                 vertices = edge.discretize(Deflection=tolerance)
-                line_edges = [
+                new_edges = [
                     Part.makeLine(vertices[i], vertices[i + 1]) for i in range(len(vertices) - 1)
                 ]
-                processed_edges.extend(line_edges)
+
+            # Overwrite start/end vertices of the approximated edge with the originals
+            new_edges[0] = new_edges[0].replaceShape(
+                [(new_edges[0].firstVertex(), original.firstVertex())]
+            )
+            new_edges[-1] = new_edges[-1].replaceShape(
+                [(new_edges[-1].lastVertex(), original.lastVertex())]
+            )
+
+            # Preserve edge reversal in the approximation
+            if original.Orientation == "Reversed":
+                new_edges = [e.reversed() for e in reversed(new_edges)]
+
+            processed_edges.extend(new_edges)
 
     # Reassemble the wire if any edges were replaced
     if modified:
