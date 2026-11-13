@@ -210,14 +210,6 @@ def orientWire(w, forward=True):
     return wire
 
 
-def discretizeWire(wire, tolerance=0.01):
-    """discretizeWire(wire) ... discretize any non-line edges with lines."""
-    ps = wire.discretize(Deflection=tolerance)
-    line_edges = [Part.makeLine(ps[i], ps[i + 1]) for i in range(len(ps) - 1)]
-
-    return Part.Wire(line_edges)
-
-
 def approximateWire(wire, tolerance=0.01):
     """approximates any non-line/arc edges with lines and arcs and calls Part.__sortEdges__.
     tolerance: Deflection tolerance for approximation. Must be positive if wire contains non-line/arc edges.
@@ -290,12 +282,8 @@ def wireToCArea(wire, tolerance=0.01):
     c = area.Curve()
 
     # Approximate wire as lines and arcs
-    coincideTolerance = getCoincideTolerance(wire.Edges)
-    if coincideTolerance is None or coincideTolerance > Path.Geom.Tolerance:
-        wire = discretizeWire(wire, tolerance)
-    else:
-        wire = approximateWire(wire, tolerance)
-    edges = _orientEdges(Part.__sortEdges__(wire.Edges))
+    wire = approximateWire(wire, tolerance)
+    edges = wire.Edges
 
     # Add the first point (start of first edge)
     if len(edges) > 0:
