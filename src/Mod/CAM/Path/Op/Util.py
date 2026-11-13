@@ -247,7 +247,7 @@ def approximateWire(wire, tolerance=0.01):
             elif isinstance(curve, Part.BezierCurve):
                 # Convert BezierCurve to BSpline
                 curve = edge.Curve.toBSpline()
-                edge = curve.toShape()
+                edge = curve.toShape(*edge.ParameterRange)
 
             if isinstance(edge.Curve, Part.BSplineCurve):
                 # Convert BSpline to arcs
