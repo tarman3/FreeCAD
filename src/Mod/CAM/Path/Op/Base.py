@@ -1308,10 +1308,8 @@ class ObjectOp:
                 translate("CAM_Operation", "%s: Safe height is above clearance height") % obj.Label
             )
             isValid = False
-        if FeatureStepDown & features and Path.Geom.isLessEqual(obj.StepDown.Value, 0):
-            Path.Log.error(
-                translate("CAM_Operation", "%s: Step down is zero or negative") % obj.Label
-            )
+        if FeatureStepDown & features and obj.StepDown.Value < 0:
+            Path.Log.error(translate("CAM_Operation", "%s: Step down is negative") % obj.Label)
             isValid = False
         return isValid
 

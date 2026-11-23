@@ -1998,12 +1998,11 @@ class ObjectFlute(PathOp.ObjectOp):
             )
             return False
 
-        step_down = obj.StepDown.Value
-        if step_down <= 0:
-            FreeCAD.Console.PrintError(
-                translate("CAM_Flute", "StepDown must be greater than zero.\n")
-            )
-            return False
+        step_down = (
+            obj.StepDown.Value
+            if Path.Geom.isStrictlyGreater(obj.StepDown.Value, 0)
+            else float("inf")
+        )
 
         # All absolute-distance tolerances used below scale with the Job's
         # configured GeometryTolerance (same property Profile/Deburr/Engrave/

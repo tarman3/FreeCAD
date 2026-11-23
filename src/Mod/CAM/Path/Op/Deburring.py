@@ -304,10 +304,6 @@ class ObjectDeburring(PathEngraveBase.ObjectOp):
         obj.setEditorMode("UseEndPoint", sortingMode)
 
     def opOnDocumentRestored(self, obj):
-        if obj.StepDown == 0:
-            obj.clearExpression("StepDown")
-            obj.StepDown = 999
-
         self.propertiesReady = False
         self.initOpProperties(obj, warn=True)
         self.opSetDefaultValues(obj, PathUtils.findParentJob(obj))
@@ -530,7 +526,11 @@ class ObjectDeburring(PathEngraveBase.ObjectOp):
 
         offsets = []
         depths = []
-        step_down = obj.StepDown.Value
+        step_down = (
+            obj.StepDown.Value
+            if Path.Geom.isStrictlyGreater(obj.StepDown.Value, 0)
+            else float("inf")
+        )
         radial_offset = obj.RadialStockToLeave.Value
         extra_depth = obj.ExtraDepth.Value
         width = obj.Width.Value

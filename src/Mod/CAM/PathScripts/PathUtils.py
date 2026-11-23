@@ -811,7 +811,7 @@ class depth_params:
         self.__clearance_height = clearance_height
         self.__safe_height = safe_height
         self.__start_depth = start_depth
-        self.__step_down = math.fabs(step_down)
+        self.__step_down = step_down if Path.Geom.isStrictlyGreater(step_down, 0) else float("inf")
         self.__z_finish_step = math.fabs(z_finish_step)
         self.__final_depth = final_depth
         self.__user_depths = user_depths
