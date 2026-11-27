@@ -31,11 +31,11 @@
 
 import Path
 import Path.Base.FeedRate as PathFeedRate
-import Path.Base.Generator.helix as helix
-import Path.Base.Generator.spiral as spiral
+from Path.Base.Generator import helix
+from Path.Base.Generator import spiral
 import Path.Op.Base as PathOp
 import Path.Op.Util as PathOpUtil
-import PathScripts.PathUtils as PathUtils
+from PathScripts import PathUtils
 import FreeCAD
 import time
 import json
@@ -204,7 +204,7 @@ def GenerateGCode(op, obj, adaptiveResults):
         p2 = region["StartPoint"]
         helixRadius = max(math.dist(p1[:2], p2[:2]), helixRadius)
 
-    stepDown = max(obj.StepDown.Value, _ADAPTIVE_MIN_STEPDOWN)
+    stepDown = max(obj.StepDown.Value if obj.MultiPass else 999, _ADAPTIVE_MIN_STEPDOWN)
 
     if obj.HelixMaxRampAngle < 0:
         obj.HelixMaxRampAngle = 0
@@ -615,9 +615,9 @@ def ExecuteModelAware(op, obj):
         # keeping a reference to the region without requiring we calculate the
         # toolpath once per step down OR forcing all stepdowns of a region into
         # a single list.
-        regionOps = list()
-        outsidePathArray2dDepthTuples = list()
-        insidePathArray2dDepthTuples = list()
+        regionOps = []
+        outsidePathArray2dDepthTuples = []
+        insidePathArray2dDepthTuples = []
         # NOTE: Make sure the depth lists are sorted for use in order-by-depth
         # and order-by-region algorithms below
         # NOTE: Pretty sure sorting is already guaranteed by how these are
@@ -774,13 +774,13 @@ def ExecuteModelAware(op, obj):
 
             # Sort regions to cut by either depth or area.
             # TODO: Bonus points for ordering to minimize rapids
-            cutlist = list()
+            cutlist = []
             # NOTE: alltuples is sorted by depth already
             alltuples = outsidePathArray2dDepthTuples + insidePathArray2dDepthTuples
             # Create sorted list of unique depths
             depths = [d for t in alltuples for d in t[0]]
             # NOTE: reverse because we cut top-down!
-            depths = sorted(list(set(depths)), reverse=True)
+            depths = sorted(set(depths), reverse=True)
             if obj.OrderCutsByRegion:
                 # Translate child ID numbers to an actual reference to the
                 # associated tuple
@@ -802,8 +802,8 @@ def ExecuteModelAware(op, obj):
                     cutlist += [([d], i[1]) for i in insidePathArray2dDepthTuples if d in i[0]]
 
             # need to convert results to python object to be JSON serializable
-            stepdown = max(obj.StepDown.Value, _ADAPTIVE_MIN_STEPDOWN)
-            adaptiveResults = list()
+            stepdown = max(obj.StepDown.Value if obj.MultiPass else 999, _ADAPTIVE_MIN_STEPDOWN)
+            adaptiveResults = []
             for depths, region in cutlist:
                 for result in region["toolpaths"]:
                     # Top depth is the height where the helix starts for a
@@ -960,7 +960,7 @@ def projectFacesToXY(faces, minEdgeLength=1e-10):
                 outfaces.append(oface)
         # For other cases, projecting the wires to a plane should suffice
         else:
-            facewires = list()
+            facewires = []
             for w in f.Wires:
                 if w.isClosed():
                     projwire = projface.makeParallelProjection(w, projdir).Wires[0]
@@ -1017,8 +1017,8 @@ def _workingEdgeHelperRoughing(op, obj, depths):
     # Final calculated regions- list of dicts with entries:
     # "region" - actual shape
     # "depths" - list of depths this region applies to
-    insideRegions = list()
-    outsideRegions = list()
+    insideRegions = []
+    outsideRegions = []
 
     # Multiple input solids can be selected- make a single part out of them,
     # will process each solid separately as appropriate
@@ -1136,12 +1136,12 @@ def _workingEdgeHelperManual(op, obj, depths):
     # Final calculated regions- list of dicts with entries:
     # "region" - actual shape
     # "depths" - list of depths this region applies to
-    insideRegions = list()
-    outsideRegions = list()
+    insideRegions = []
+    outsideRegions = []
 
     # User selections
-    selectedRegions = list()
-    selectedEdges = list()
+    selectedRegions = []
+    selectedEdges = []
 
     for base, subs in op.baseShapes(obj):
         for sub in subs:
@@ -1170,7 +1170,7 @@ def _workingEdgeHelperManual(op, obj, depths):
     # When looking for selected edges, project to a single plane first, THEN try
     # to find wires. Take all the resulting wires and make faces in one shot to
     # make bullseye-style cutouts where selected wires nest.
-    edgefaces = list()
+    edgefaces = []
     if selectedEdges:
         pp = [projface.makeParallelProjection(e, projdir).Wires[0] for e in selectedEdges]
         ppe = []
@@ -1286,9 +1286,9 @@ def _get_working_edges(op, obj):
     Additional modifications to selected region(face), such as extensions,
     should be placed within this function.
     """
-    all_regions = list()
-    edge_list = list()
-    rawEdges = list()
+    all_regions = []
+    edge_list = []
+    rawEdges = []
 
     # Get faces selected by user
     for base, subs in op.baseShapes(obj):
@@ -1353,7 +1353,7 @@ def _getWorkingEdgesModelAware(op, obj):
         clearance_height=obj.ClearanceHeight.Value,
         safe_height=obj.SafeHeight.Value,
         start_depth=obj.StartDepth.Value,
-        step_down=max(obj.StepDown.Value, _ADAPTIVE_MIN_STEPDOWN),
+        step_down=max(obj.StepDown.Value if obj.MultiPass else 999, _ADAPTIVE_MIN_STEPDOWN),
         z_finish_step=0.0,
         final_depth=obj.FinalDepth.Value,
         user_depths=None,
@@ -1396,7 +1396,7 @@ def _getWorkingEdgesModelAware(op, obj):
     idnumber = 0
     for r in insideRegions + outsideRegions:
         r["id"] = idnumber
-        r["children"] = list()
+        r["children"] = []
         idnumber += 1
 
     # NOTE: Inside and outside regions are inverses of each other
@@ -1491,7 +1491,7 @@ def _getWorkingEdgesModelAware(op, obj):
 
     # Create discretized regions
     def _createDiscretizedRegions(regionDicts):
-        discretizedRegions = list()
+        discretizedRegions = []
         for rdict in regionDicts:
             discretizedRegions.append(
                 {
@@ -1509,12 +1509,12 @@ def _getWorkingEdgesModelAware(op, obj):
     # NOTE: REMINDER: This is notably different from machining regions- just
     # a dict with depth: region entries, single depth for easy lookup
     stockDiscretized = {}
-    for d in stockProjectionDict:
-        discretizedEdges = list()
-        for a in stockProjectionDict[d].Faces:
+    for key, value in stockProjectionDict.items():
+        discretizedEdges = []
+        for a in value.Faces:
             for w in a.Wires:
                 discretizedEdges.append([discretize(w)])
-        stockDiscretized[d] = discretizedEdges
+        stockDiscretized[key] = discretizedEdges
 
     # Return found inside and outside regions/depths. Up to the caller to decide
     # which ones it cares about.
@@ -1566,7 +1566,7 @@ class PathAdaptive(PathOp.ObjectOp):
         if dataType == "raw":
             return enums
 
-        data = list()
+        data = []
         idx = 0 if dataType == "translated" else 1
 
         Path.Log.debug(enums)

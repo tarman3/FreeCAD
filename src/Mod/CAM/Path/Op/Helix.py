@@ -625,9 +625,7 @@ class ObjectHelix(PathCircularHoleBase.ObjectOp):
         # validate that SafeHeight doesn't exceed ClearanceHeight
         safeHeight = obj.SafeHeight.Value
         clearanceHeight = obj.ClearanceHeight.Value
-        step_down = (
-            obj.StepDown.Value if Path.Geom.isStrictlyGreater(obj.StepDown.Value, 0) else 999999
-        )
+        step_down = obj.StepDown.Value if obj.MultiPass else 999
         tooldiameter = obj.ToolController.Tool.Diameter.Value
         toolradius = tooldiameter / 2
 

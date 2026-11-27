@@ -1998,9 +1998,7 @@ class ObjectFlute(PathOp.ObjectOp):
             )
             return False
 
-        step_down = (
-            obj.StepDown.Value if Path.Geom.isStrictlyGreater(obj.StepDown.Value, 0) else 999999
-        )
+        step_down = obj.StepDown.Value if obj.MultiPass else 999
 
         # All absolute-distance tolerances used below scale with the Job's
         # configured GeometryTolerance (same property Profile/Deburr/Engrave/

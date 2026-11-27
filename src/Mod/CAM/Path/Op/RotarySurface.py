@@ -570,7 +570,7 @@ class ObjectRotarySurface(PathOp.ObjectOp):
             Path.Log.error("Rotary Surface: Step Over must be positive.")
             return
 
-        step_down = float(obj.StepDown.Value) if hasattr(obj, "StepDown") else 0.0
+        step_down = obj.StepDown.Value if obj.MultiPass else 999
         stock_to_leave = float(obj.RadialStockToLeave.Value)
 
         # Optional restriction to user-selected faces. Tightens axial and
@@ -647,7 +647,7 @@ class ObjectRotarySurface(PathOp.ObjectOp):
         ]
         min_surface_r = min(valid_radii) if valid_radii else 0.0
         gap = max(0.0, stock_radius - (min_surface_r + stock_to_leave))
-        if step_down > 0.0 and gap > 0.0:
+        if gap > 0.0:
             n_layers = Path.Geom.ceil(gap / step_down)
         else:
             n_layers = 1
@@ -656,7 +656,7 @@ class ObjectRotarySurface(PathOp.ObjectOp):
             # Layer 0 is outermost (closest to stock OD). Final layer's floor
             # is at or below min_surface_r + stock_to_leave, so the surface
             # follow naturally takes over for the finish pass.
-            if step_down > 0.0 and n_layers > 1:
+            if n_layers > 1:
                 cutter_z_floor = stock_radius - (layer_index + 1) * step_down
             else:
                 cutter_z_floor = None

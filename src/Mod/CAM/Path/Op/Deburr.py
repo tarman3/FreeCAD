@@ -192,7 +192,7 @@ class ObjectDeburr(PathEngraveBase.ObjectOp):
         if dataType == "raw":
             return enums
 
-        data = list()
+        data = []
         idx = 0 if dataType == "translated" else 1
 
         Path.Log.debug(enums)
@@ -420,9 +420,9 @@ class ObjectDeburr(PathEngraveBase.ObjectOp):
 
         zValues = []
         z = 0
-        if obj.StepDown.Value != 0:
-            while z + obj.StepDown.Value < depth:
-                z = z + obj.StepDown.Value
+        if obj.MultiPass:
+            while Path.Geom.isStrictlyLess(z + obj.StepDown.Value, depth):
+                z += obj.StepDown.Value
                 zValues.append(z)
 
         zValues.append(depth)
@@ -444,8 +444,6 @@ class ObjectDeburr(PathEngraveBase.ObjectOp):
         obj.Width = "1 mm"
         obj.ExtraDepth = "0.5 mm"
         obj.Join = "Round"
-        obj.setExpression("StepDown", "0 mm")
-        obj.StepDown = "0 mm"
         obj.Direction = "CW"
         obj.Side = "Outside"
         obj.EntryPoint = 0

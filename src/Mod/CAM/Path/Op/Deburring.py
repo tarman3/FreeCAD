@@ -524,9 +524,7 @@ class ObjectDeburring(PathEngraveBase.ObjectOp):
 
         offsets = []
         depths = []
-        step_down = (
-            obj.StepDown.Value if Path.Geom.isStrictlyGreater(obj.StepDown.Value, 0) else 999999
-        )
+        step_down = obj.StepDown.Value if obj.MultiPass else 999
         radial_offset = obj.RadialStockToLeave.Value
         extra_depth = obj.ExtraDepth.Value
         width = obj.Width.Value

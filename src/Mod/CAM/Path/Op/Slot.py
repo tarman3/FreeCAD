@@ -538,12 +538,13 @@ class ObjectSlot(PathOp.ObjectOp):
         # Enforce limits and prep depth steps
         self.opApplyPropertyLimits(obj)
         self.depthParams = PathUtils.depth_params(
-            obj.ClearanceHeight.Value,
-            obj.SafeHeight.Value,
-            obj.StartDepth.Value,
-            obj.StepDown.Value,
-            0,
-            obj.FinalDepth.Value,
+            clearance_height=obj.ClearanceHeight.Value,
+            safe_height=obj.SafeHeight.Value,
+            start_depth=obj.StartDepth.Value,
+            step_down=obj.StepDown.Value,
+            z_finish_step=0,
+            final_depth=obj.FinalDepth.Value,
+            single_pass=not obj.MultPass,
         )
 
         # Main path generation

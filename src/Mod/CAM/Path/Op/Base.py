@@ -433,6 +433,13 @@ class ObjectOp:
                 "Depth",
                 QT_TRANSLATE_NOOP("App::Property", "Incremental Step Down of Tool"),
             )
+            obj.addProperty(
+                "App::PropertyBool",
+                "MultiPass",
+                "Depth",
+                QT_TRANSLATE_NOOP("App::Property", "Disable to make one pass at the final depth"),
+            )
+            obj.MultiPass = True
 
         if FeatureFinishDepth & features:
             obj.addProperty(
@@ -624,11 +631,13 @@ class ObjectOp:
             # A prototype recorded the solved rotary positions on the
             # operation. The post solves them from the Placement now.
             obj.removeProperty("RotaryPositions")
-        if hasattr(obj, "Workplane"):
-            if "App::PropertyLink" == obj.getTypeIdOfProperty("Workplane"):
-                if hasattr(obj, "WorkplaneLink"):
-                    obj.removeProperty("WorkplaneLink")
-                return
+        if (
+            hasattr(obj, "Workplane")
+            and obj.getTypeIdOfProperty("Workplane") == "App::PropertyLink"
+        ):
+            if hasattr(obj, "WorkplaneLink"):
+                obj.removeProperty("WorkplaneLink")
+            return
 
         linked = None
         placement = None
@@ -754,7 +763,18 @@ class ObjectOp:
                 "Depth",
                 QT_TRANSLATE_NOOP("App::Property", "Incremental Step Down of Tool"),
             )
-            obj.StepDown = 0
+        if FeatureStepDown & features and not hasattr(obj, "MultiPass"):
+            obj.addProperty(
+                "App::PropertyBool",
+                "MultiPass",
+                "Depth",
+                QT_TRANSLATE_NOOP("App::Property", "Disable to make one pass at the final depth"),
+            )
+            obj.MultiPass = True
+            if not Path.Geom.isStrictlyGreater(obj.StepDown.Value, 0):
+                obj.MultiPass = False
+                obj.clearExpression("StepDown")
+                obj.StepDown = 999
 
         if FeatureHeights & features and not hasattr(obj, "ClearanceHeightOut"):
             obj.addProperty(
@@ -861,7 +881,6 @@ class ObjectOp:
         depend on property values. Build the text with deprecationNotice(), passing the
         DeprecationStage the op is in for this release.
         Can safely be overwritten by subclasses."""
-        return None
 
     def opOnChanged(self, obj, prop):
         """opOnChanged(obj, prop) ... overwrite to process property changes.
@@ -1308,8 +1327,10 @@ class ObjectOp:
                 translate("CAM_Operation", "%s: Safe height is above clearance height") % obj.Label
             )
             isValid = False
-        if FeatureStepDown & features and obj.StepDown.Value < 0:
-            Path.Log.error(translate("CAM_Operation", "%s: Step down is negative") % obj.Label)
+        if FeatureStepDown & features and not Path.Geom.isStrictlyGreater(obj.StepDown.Value, 0):
+            Path.Log.error(
+                translate("CAM_Operation", "%s: Step down is zero or negative") % obj.Label
+            )
             isValid = False
         return isValid
 

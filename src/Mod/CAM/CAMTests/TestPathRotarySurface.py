@@ -31,7 +31,7 @@ import Path.Main.Stock as PathStock
 from CAMTests.PathTestUtils import PathTestBase
 
 try:
-    import ocl  # noqa: F401
+    import ocl
 
     HAVE_OCL = True
 except ImportError:
@@ -161,7 +161,7 @@ class TestPathRotarySurface(PathTestBase):
         op.AngularResolution = 15.0
         # Clear the OpToolDiameter expression that the SetupSheet auto-binds.
         op.setExpression("StepDown", None)
-        op.StepDown = 0.0  # single radial pass by default; test_07 covers multi-pass
+        op.StepDown = 999.0  # single radial pass by default; test_07 covers multi-pass
         op.RadialStockToLeave = 0.0
         op.MaxFeed = 5000.0
         op.LinearDeflection = 0.2
