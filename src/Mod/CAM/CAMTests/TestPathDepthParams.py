@@ -189,7 +189,7 @@ class TestDepthCases(unittest.TestCase):
             "clearance_height": 3,
             "safe_height": 3,
             "start_depth": 2,
-            "step_down": -1,
+            "step_down": 1,
             "z_finish_step": -1,
             "final_depth": 0,
             "user_depths": None,
@@ -202,15 +202,16 @@ class TestDepthCases(unittest.TestCase):
         self.assertListEqual(r, expected)
 
         # a step_down less than the finish step is an error
-        args = {
-            "clearance_height": 3,
-            "safe_height": 3,
-            "start_depth": 2,
-            "step_down": 0.1,
-            "z_finish_step": 1,
-            "final_depth": 0,
-            "user_depths": None,
-        }
+        args["step_down"] = 0.1
+        args["z_finish_step"] = 1
+        self.assertRaises(ValueError, PathUtils.depth_params, **args)
+
+        # a step_down negative
+        args["step_down"] = -1
+        self.assertRaises(ValueError, PathUtils.depth_params, **args)
+
+        # a step_down zero
+        args["step_down"] = 0
         self.assertRaises(ValueError, PathUtils.depth_params, **args)
 
     def test009(self):
@@ -263,6 +264,25 @@ class TestDepthCases(unittest.TestCase):
         r = [i for i in d]
         self.assertListEqual(r, expected, "Expected {}, but result of {}".format(expected, r))
 
+    def test011(self):
+        """Single-pass"""
+        args = {
+            "clearance_height": 20.0,
+            "safe_height": 15.0,
+            "start_depth": 10.0,
+            "step_down": 1.0,
+            "z_finish_step": 0.0,
+            "final_depth": 0.0,
+            "user_depths": None,
+            "single_pass": True,
+        }
+
+        expected = [0]
+
+        d = PathUtils.depth_params(**args)
+        r = [i for i in d]
+        self.assertListEqual(r, expected, "Expected {}, but result of {}".format(expected, r))
+
     def test_0_step_down_and_start_depth_equal_to_final_depth(self):
         target_depth = 10
 
@@ -270,7 +290,7 @@ class TestDepthCases(unittest.TestCase):
             clearance_height=target_depth + 10,
             safe_height=target_depth + 5,
             start_depth=target_depth,
-            step_down=0,
+            step_down=1,
             z_finish_step=0,
             final_depth=target_depth,
         )
